@@ -1,4 +1,4 @@
-# INT8 Arithmetic — Pre-RTL Analysis, Predictions, and Measured Update
+# INT8 Arithmetic — Analysis, Predictions, and Measured Results
 
 ## Role
 Performance Analyst artifact.
@@ -86,19 +86,15 @@ Prediction: sign extension preserves the numerical value exactly.
 
 ## 4. Exhaustive Verification Prediction
 
-There are:
+There are 256 possible activation values and 256 possible weight values.
 
-2^8 = 256
-
-possible activation values and 256 possible weight values.
-
-Therefore an exhaustive product test contains:
+Therefore:
 
 256 x 256 = 65,536
 
 input combinations.
 
-Prediction: a software reference model can evaluate all 65,536 combinations and compare them against the RTL output.
+Prediction: exhaustive functional verification is practical.
 
 ## 5. Cycle Prediction
 
@@ -138,81 +134,70 @@ Prediction:
 
 No numerical power value is predicted at this stage.
 
-## 8. First Simulation Measurement
+## 8. Measured Functional Result
 
-### Vivado/XSim run supplied by user
+### User-supplied Vivado/XSim run
 
-- Vivado 2018.2
-- Behavioral/functional simulation
+- Vivado: 2018.2
+- Simulation: Behavioral / Functional
 - Time resolution: 1 ps
-- Simulation command ran for 1000 ns
-- Compile completed successfully.
-- Elaboration completed successfully.
-- Simulation completed successfully for the requested 1000 ns window.
+- Command: `restart` followed by `run 70 us`
+- DUT and testbench compiled and elaborated successfully.
+- Simulation completed successfully.
 
-### Measured waveform evidence
+The final XSim console reported:
 
-The supplied waveform shows:
+```text
+INT8 ARITHMETIC EXHAUSTIVE VERIFICATION
+Tests performed : 65536
+Errors found    : 0
+RESULT          : PASS
+```
 
-- `activation_i = 0x80`, interpreted as signed -128.
-- `weight_i = 0x68`, interpreted as +104.
-- `product_o = 0xCD38`, interpreted as -13000.
-- `product_ext_o = 0xFFFFCD38`, interpreted as -13000.
-- `errors = 0` over the observed interval.
+The simulator reported:
 
-Independent arithmetic check:
+```text
+$finish called at time : 65536 ns
+```
 
-(-128) x 104 = -13312.
+The measured execution time agrees exactly with the testbench structure:
 
-Therefore the displayed example must be interpreted carefully: the screenshot's displayed `weight_i` and product values do not appear to correspond to the same instant at the cursor because the waveform spans multiple transitions and the value panel is at the current cursor position. We should not use that screenshot alone to claim a specific operand/product pair is a verified simultaneous sample.
+65,536 tests x 1 ns/test = 65,536 ns
 
-The stronger evidence is the testbench counters and final console summary.
+### Measured vs predicted
 
-### Coverage calculation
-
-The testbench waits `#1` for each pair. The full exhaustive run requires:
-
-65,536 x 1 ns = 65,536 ns = 65.536 us
-
-The supplied run was only 1000 ns = 1 us.
-
-Approximate maximum completed iterations during that window:
-
-1000 ns / 1 ns per iteration = 1000 iterations
-
-Therefore the run is partial, not exhaustive.
-
-## 9. Measured vs Predicted Status
-
-| Metric | Prediction | First measurement | Status |
+| Metric | Prediction | Measurement | Status |
 |---|---|---|---|
 | Compilation | Successful | Successful | Confirmed |
 | Elaboration | Successful | Successful | Confirmed |
-| Product range | -16256 to +16384 | Not exhaustively measured | Pending |
-| Exhaustive combinations | 65,536 | ~1000-window coverage | Pending |
-| Errors | 0 expected | No errors observed in shown interval | Partial confirmation |
-| Registered latency | 0 cycles | Consistent with combinational DUT | Confirmed architecturally |
+| Exhaustive combinations | 65,536 | 65,536 | Confirmed |
+| Errors | 0 | 0 | Confirmed |
+| Functional result | PASS | PASS | Confirmed |
+| Product range | -16256 to +16384 | All combinations passed reference comparison | Confirmed functionally |
+| Sign extension | Value preserved | All combinations passed extension check | Confirmed functionally |
+| Registered latency | 0 cycles | DUT is combinational | Confirmed architecturally |
 | LUT usage | Unknown until synthesis | Not measured | Pending |
+| FF usage | 0 expected in DUT | Not measured by synthesis | Pending |
 | DSP usage | Unknown until synthesis | Not measured | Pending |
 | Timing | Implementation-dependent | Not measured | Pending |
 | Power | Implementation/activity-dependent | Not measured | Pending |
+
+## 9. Interpretation
+
+The functional prediction was correct: the RTL arithmetic block handled every possible signed INT8 input pair with zero mismatches.
+
+This does **not** prove the block's FPGA resource mapping, timing, or power characteristics. Those remain implementation-level measurements.
 
 ## 10. Warning
 
 Vivado reported that `int8_arithmetic.v` has no explicit timescale while another module has one. This is a simulation-unit consistency warning, not a functional failure. A future cleanup may add `` `timescale 1ns/1ps `` to the DUT.
 
-## 11. Required Next Measurement
-
-Run the testbench for at least 70 us / 70,000 ns and capture the final console summary.
-
-Expected final evidence:
-
-- Tests performed: 65536
-- Errors found: 0
-- RESULT: PASS
-
-Only after that result will exhaustive functional verification be marked complete.
-
 ## Status
 
-**Functional verification status: PARTIAL — exhaustive run not yet completed.**
+**Functional verification: PASS — 65,536 / 65,536 combinations, 0 errors.**
+
+**Implementation analysis: Pending synthesis/implementation measurements.**
+
+## Next Step
+
+Proceed to design review of `int8_arithmetic` before starting the next module. The review should check signedness, width choices, module boundaries, verification evidence, and remaining implementation assumptions.
