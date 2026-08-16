@@ -1,7 +1,7 @@
-# INT8 Arithmetic — Pre-RTL Analysis and Predictions
+# INT8 Arithmetic — Pre-RTL Analysis, Predictions, and Measured Update
 
 ## Role
-Performance Analyst artifact. This document contains predictions only; no simulation measurements have been performed yet.
+Performance Analyst artifact.
 
 ## Active Phase
 Phase 1 — Arithmetic Foundations and MAC Design.
@@ -15,7 +15,6 @@ Phase 1 — Arithmetic Foundations and MAC Design.
 - Product is signed INT16.
 - Product is sign-extended to signed INT32.
 - Vivado synthesis and implementation settings can affect exact mapped resources and timing.
-- Exact FPGA resource/timing numbers are therefore predictions, not measurements.
 
 ## 1. Numerical Predictions
 
@@ -49,8 +48,6 @@ INT19 maximum = 262143, so INT19 is sufficient for the current worst-case positi
 The architectural accumulator remains INT32 for headroom.
 
 ## 2. Boundary Test Vectors
-
-These are predicted expected results and should become unit-test cases later.
 
 | activation | weight | expected INT16 product | expected sign |
 |---:|---:|---:|---|
@@ -101,7 +98,7 @@ Therefore an exhaustive product test contains:
 
 input combinations.
 
-Prediction: a software reference model can evaluate all 65,536 combinations and compare them against the RTL output. This is small enough to be practical and provides stronger confidence than a handful of directed vectors.
+Prediction: a software reference model can evaluate all 65,536 combinations and compare them against the RTL output.
 
 ## 5. Cycle Prediction
 
@@ -114,7 +111,7 @@ At 100 MHz:
 
 T_clock = 1 / 100 MHz = 10 ns
 
-Prediction: the multiplier plus sign-extension logic must meet the timing budget assigned to its surrounding register-to-register path. The exact delay cannot be honestly predicted from arithmetic alone because FPGA mapping and synthesis determine the implementation.
+Prediction: the multiplier plus sign-extension logic must meet the timing budget assigned to its surrounding register-to-register path. Exact delay requires implementation measurement.
 
 ## 6. Resource Prediction
 
@@ -139,33 +136,83 @@ Prediction:
 - Unnecessary toggling at the multiplier inputs will propagate through the datapath.
 - Clock gating is not applicable to the pure combinational block itself; later architecture should consider operand isolation or clock enables around registered stages if measurements justify them.
 
-No numerical power value is predicted at this stage because FPGA power depends on activity, implementation, clocking, and device conditions.
+No numerical power value is predicted at this stage.
 
-## 8. Expected Failure Modes
+## 8. First Simulation Measurement
 
-The most likely arithmetic failures are:
+### Vivado/XSim run supplied by user
 
-1. Treating operands as unsigned.
-2. Incorrect two's-complement interpretation.
-3. Truncating the product to 8 bits.
-4. Incorrect sign extension from 16 to 32 bits.
-5. Confusing bit patterns with signed numerical values.
-6. Testing only positive values and missing negative boundary cases.
+- Vivado 2018.2
+- Behavioral/functional simulation
+- Time resolution: 1 ps
+- Simulation command ran for 1000 ns
+- Compile completed successfully.
+- Elaboration completed successfully.
+- Simulation completed successfully for the requested 1000 ns window.
 
-## 9. Measurement Plan
+### Measured waveform evidence
 
-After RTL and verification are permitted, collect:
+The supplied waveform shows:
 
-- Functional correctness over all 65,536 input combinations.
-- Post-synthesis LUT usage.
-- Flip-flop usage.
-- DSP usage.
-- Worst negative slack / timing result.
-- Maximum combinational delay of the relevant path.
-- Power estimate if a suitable Vivado power flow is available.
+- `activation_i = 0x80`, interpreted as signed -128.
+- `weight_i = 0x68`, interpreted as +104.
+- `product_o = 0xCD38`, interpreted as -13000.
+- `product_ext_o = 0xFFFFCD38`, interpreted as -13000.
+- `errors = 0` over the observed interval.
 
-Then update this document with a measured-vs-predicted table. Predictions must remain unchanged in the prediction section so that deviations can be analyzed rather than hidden.
+Independent arithmetic check:
 
-## Prediction Gate
+(-128) x 104 = -13312.
 
-No RTL or simulation should begin until the learner confirms the expected numerical, cycle, resource, and verification behavior described here.
+Therefore the displayed example must be interpreted carefully: the screenshot's displayed `weight_i` and product values do not appear to correspond to the same instant at the cursor because the waveform spans multiple transitions and the value panel is at the current cursor position. We should not use that screenshot alone to claim a specific operand/product pair is a verified simultaneous sample.
+
+The stronger evidence is the testbench counters and final console summary.
+
+### Coverage calculation
+
+The testbench waits `#1` for each pair. The full exhaustive run requires:
+
+65,536 x 1 ns = 65,536 ns = 65.536 us
+
+The supplied run was only 1000 ns = 1 us.
+
+Approximate maximum completed iterations during that window:
+
+1000 ns / 1 ns per iteration = 1000 iterations
+
+Therefore the run is partial, not exhaustive.
+
+## 9. Measured vs Predicted Status
+
+| Metric | Prediction | First measurement | Status |
+|---|---|---|---|
+| Compilation | Successful | Successful | Confirmed |
+| Elaboration | Successful | Successful | Confirmed |
+| Product range | -16256 to +16384 | Not exhaustively measured | Pending |
+| Exhaustive combinations | 65,536 | ~1000-window coverage | Pending |
+| Errors | 0 expected | No errors observed in shown interval | Partial confirmation |
+| Registered latency | 0 cycles | Consistent with combinational DUT | Confirmed architecturally |
+| LUT usage | Unknown until synthesis | Not measured | Pending |
+| DSP usage | Unknown until synthesis | Not measured | Pending |
+| Timing | Implementation-dependent | Not measured | Pending |
+| Power | Implementation/activity-dependent | Not measured | Pending |
+
+## 10. Warning
+
+Vivado reported that `int8_arithmetic.v` has no explicit timescale while another module has one. This is a simulation-unit consistency warning, not a functional failure. A future cleanup may add `` `timescale 1ns/1ps `` to the DUT.
+
+## 11. Required Next Measurement
+
+Run the testbench for at least 70 us / 70,000 ns and capture the final console summary.
+
+Expected final evidence:
+
+- Tests performed: 65536
+- Errors found: 0
+- RESULT: PASS
+
+Only after that result will exhaustive functional verification be marked complete.
+
+## Status
+
+**Functional verification status: PARTIAL — exhaustive run not yet completed.**
