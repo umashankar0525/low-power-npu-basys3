@@ -65,17 +65,65 @@ The learner correctly predicted:
 
 These are architectural predictions, not measured implementation results.
 
-## Important Refinement
+## Width Derivation
 
-Option A is not automatically the final architecture. It may have a larger combinational reduction path than a sequential accumulation approach. Therefore the next step is to derive the timing and cycle implications before selecting the reduction architecture.
+Each INT8 x INT8 product is represented as signed INT16.
+
+Maximum positive product:
+
+127 x 127 = 16129
+
+The mathematical product range is actually:
+
+-16256 <= product <= 16384
+
+because (-128) x 127 = -16256 and (-128) x (-128) = 16384.
+
+For two maximum positive products:
+
+16384 + 16384 = 32768
+
+Signed INT16 maximum:
+
+32767
+
+Therefore the pairwise sum cannot safely remain INT16 and requires INT17.
+
+For four maximum positive products:
+
+4 x 16384 = 65536
+
+Signed INT17 maximum:
+
+65535
+
+Therefore the four-product partial sum cannot safely remain INT17 and requires INT18.
+
+The signed INT18 maximum is:
+
+131071
+
+so 65536 is safely representable.
+
+The final 3x3 convolution sum is bounded by:
+
+9 x (-16256) = -146304
+9 x 16384 = 147456
+
+This fits easily within signed INT32, whose range is:
+
+-2147483648 to 2147483647
+
+Therefore an INT18 four-product partial sum can be sign-extended to INT32 before being added to the INT32 accumulator.
+
+## Corrections to Learner Responses
+
+The learner's second response had a small arithmetic wording error: the maximum four-product sum is 65536, not 65535. INT17 is insufficient because its maximum positive value is 65535.
+
+The third response correctly recognized that INT32 can safely hold the convolution result, but the reason should be stated using the INT32 representable range as well as the derived convolution bound. The convolution bound (-146304 to 147456) is far inside the INT32 range (-2147483648 to 2147483647).
 
 ## Next Learning Question
 
-For four signed INT16 products, determine the required width of:
+For the balanced tree, derive the arithmetic depth from four INT16 products to one INT18 partial sum. Then predict whether this two-level addition tree can fit within one 100 MHz cycle. Do not claim timing closure without synthesis/place-and-route measurement.
 
-- each product,
-- each pairwise sum in a balanced tree,
-- the four-product partial sum,
-- and the final INT32 convolution accumulation.
-
-Then determine whether a balanced tree can produce the four-product partial sum within one 100 MHz cycle as a prediction. No RTL should be generated until this derivation is complete.
+No new RTL should be generated until this timing prediction and architecture selection are complete.
