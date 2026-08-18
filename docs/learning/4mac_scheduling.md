@@ -1,4 +1,4 @@
-# 4-MAC Scheduling — Learning Plan
+# 4-MAC Scheduling — Learning Checkpoint
 
 ## Role
 Teaching Assistant.
@@ -6,68 +6,34 @@ Teaching Assistant.
 ## Active Phase
 Phase 1 — Arithmetic Foundations and MAC Design.
 
-## Project Phase Map
+## Understanding Check
 
-The project is organized into 8 architecture/build phases:
+The learner correctly identified:
 
-1. Arithmetic foundations and MAC design — IN PROGRESS
-2. 4-MAC compute datapath and scheduling — NEXT
-3. BRAM data movement and buffering
-4. ReLU and output/quantization path
-5. Control FSM and end-to-end sequencing
-6. Convolution engine integration and verification
-7. Basys 3 FPGA implementation, timing, resource, and power measurement
-8. Final design review, optimization, and interview-oriented validation
+1. Four MAC units can compute four products in parallel. Therefore nine products require at least ceil(9/4) = 3 product-generation cycles.
+2. Three multiplication cycles do not automatically mean the convolution result is available after three cycles because the nine products must also be reduced into the final sum.
+3. A partial-sum register is needed to preserve state across cycles. In addition, combinational addition/reduction logic is required to actually add the products.
 
-Phase 1 is partially complete: the INT8 arithmetic primitive and INT32 accumulator have been functionally verified. The remaining Phase 1 work is to derive and design the 4-MAC schedule.
+## Important Refinement
 
-## What the 4-MAC Problem Means
+The answer 'a register to store the partial sum' is only part of the required hardware. A register stores the partial sum, but an adder or reduction network performs the arithmetic that creates the partial sum.
 
-A 3x3 single-channel convolution requires nine multiply operations:
+For four products P0, P1, P2, P3, possible reductions include:
 
-S = a0*w0 + a1*w1 + ... + a8*w8
+Sequential:
 
-The architecture has four MAC units, so up to four products can be generated in parallel during a cycle.
+partial = P0 + P1 + P2 + P3
 
-The mathematical result does not change. Only the schedule changes.
+or a balanced tree:
 
-## Lower-Bound Cycle Reasoning
+sum01 = P0 + P1
+sum23 = P2 + P3
+partial = sum01 + sum23
 
-There are 9 products and 4 MAC units.
+The actual architecture must be derived from timing, resource, and power goals before RTL generation.
 
-A lower bound on multiplication groups is:
+## Next Learning Question
 
-ceil(9 / 4) = 3 groups
+Determine whether the four INT16 products should be added directly as a four-input reduction, through a balanced adder tree, or sequentially over multiple cycles. Compare the implications for latency, combinational depth, registers, and switching activity.
 
-A natural first schedule is therefore:
-
-Cycle/group 1: products 0,1,2,3
-Cycle/group 2: products 4,5,6,7
-Cycle/group 3: product 8
-
-This establishes that at least three product-generation groups are required if each MAC performs at most one multiplication per cycle.
-
-It does NOT yet establish the final convolution latency, because we still must decide how the four products are reduced into partial sums and how the partial sums are accumulated.
-
-## Architectural Question
-
-There are several possible reduction organizations. For example:
-
-Option A: generate four products, form a partial sum, then accumulate the partial sum.
-
-Option B: feed products into independent accumulators and reduce later.
-
-Option C: use an adder tree between the four MAC products and the main accumulator.
-
-We will not choose among these until the arithmetic, register placement, and timing implications are derived.
-
-## Learning Objective
-
-Before RTL, understand the difference between:
-
-- multiplication parallelism,
-- addition/reduction parallelism,
-- accumulator state,
-- and control/scheduling.
-
-The next teaching step is to derive a concrete schedule on paper and calculate its cycle count from first principles.
+No RTL should be generated until this reduction architecture is understood and selected.
