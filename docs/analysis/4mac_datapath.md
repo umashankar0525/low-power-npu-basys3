@@ -9,103 +9,127 @@ Phase 2 — 4-MAC Compute Datapath + Scheduling.
 ## Assumptions
 
 - Target clock = 100 MHz.
-- Clock period = 10 ns.
+- Clock period = 1 / 100 MHz = 10 ns.
 - One 3x3 convolution requires 9 INT8 x INT8 products.
-- Four multiplier lanes are available.
-- Timing closure is not assumed before Vivado synthesis/implementation.
+- Four multiplier lanes operate in parallel.
+- Architecture uses a balanced reduction tree and one shared INT32 accumulator.
+- Behavioral simulation does not establish FPGA timing closure.
 
 ## Arithmetic Resource Prediction
 
-Four multiplier operations must be supported in parallel during the first two product groups. The architecture also requires the ninth product during the third group.
+Four multiplier operations must be supported in parallel because four products are generated per compute group.
 
-A four-input balanced reduction requires three additions total: P0+P1, P2+P3, and the sum of those two partial sums. The first two additions can occur in parallel, giving an adder depth of two for each four-product reduction.
+The selected architecture requires one long-lived INT32 accumulator register rather than four independent INT32 accumulators.
 
-## Width Derivation
+The balanced four-input reduction requires three additions total:
 
-Maximum signed INT8 product:
+1. P0 + P1
+2. P2 + P3
+3. sum01 + sum23
+
+The first two additions can occur in parallel, giving an adder depth of two.
+
+## Cycle Schedule Prediction
+
+Cycle 1:
+
+P0, P1, P2, P3 are generated.
+
+Cycle 2:
+
+P4, P5, P6, P7 are generated.
+
+Cycle 3:
+
+P8 is generated while S0 + S1 is formed.
+
+Cycle 4:
+
+The final T + P8 operation produces the result.
+
+## Measured Behavioral Result
+
+The XSim directed verification completed with all seven cases passing.
+
+Observed results:
+
+- Case 1: 0
+- Case 2: 54
+- Case 3: -54
+- Case 4: 54
+- Case 5: 147456
+- Case 6: -146304
+- Case 7: -165
+
+The boundary calculations were confirmed independently:
 
 (-128) x (-128) = 16384
 
-Therefore the product requires signed INT16.
+9 x 16384 = 147456
 
-Maximum four-product positive partial sum:
+127 x (-128) = -16256
 
-4 x 16384 = 65536
+9 x (-16256) = -146304
 
-INT17 cannot represent +65536, so S0 and S1 require signed INT18.
+Therefore the behavioral implementation correctly covers the derived convolution result range:
 
-Maximum combined partial sum:
+-146304 <= R <= 147456
 
-65536 + 65536 = 131072
+## Measured Latency
 
-INT18 tops out at +131071, so T requires signed INT19.
+The corrected testbench measures latency from the active clock edge that accepts start to the edge at which done/result become valid.
 
-Maximum final convolution result:
+The implemented schedule behaves as a three-clock-period start-to-result latency because the first processing stage executes on the same edge that accepts start.
 
-131072 + 16384 = 147456
+At 100 MHz:
 
-The final result is stored in signed INT32.
+Tclk = 10 ns
 
-## Latency Options Considered
+Measured behavioral latency = 3 x 10 ns = 30 ns
 
-Option A: register T before adding P8. This gives a conservative four-stage schedule and was initially predicted as 40 ns at 100 MHz.
+This is a behavioral cycle result, not a claim about physical FPGA propagation delay.
 
-Option B: accept start and execute the first computation on the same active edge, then perform S1 on the next edge, T and P8 on the third edge, and result/done on the fourth edge. The start-accepting edge to result edge is therefore three clock periods, or 30 ns at 100 MHz.
+## Important Timing Distinction
 
-The implemented RTL follows Option B.
+The Basys 3 target clock is specified as 100 MHz for this project. The uncertainty is not the nominal board clock; it is whether the synthesized implementation can meet a 10 ns clock period after routing and placement.
 
-## Measured Verification Result
+Behavioral simulation verifies logical behavior and cycle sequencing. It does not provide LUT/DSP mapping, routed combinational delay, setup slack, hold slack, or maximum achievable clock frequency.
 
-The corrected XSim behavioral simulation completed with all seven directed cases passing:
+Therefore the next performance step is synthesis and implementation timing analysis.
 
-- Case 1: result = 0 — PASS
-- Case 2: result = 54 — PASS
-- Case 3: result = -54 — PASS
-- Case 4: result = 54 — PASS
-- Case 5: result = 147456 — PASS
-- Case 6: result = -146304 — PASS
-- Case 7: result = -165 — PASS
-- Overall: ALL TESTS PASSED
+## Utilization Prediction
 
-The first testbench run reported 14 failures, all due to an incorrect one-clock-later expectation for done. Arithmetic results were already correct. The verification expectation was corrected to count latency from the active edge that accepts start.
+The simple product schedule has:
 
-The corrected testbench passed all directed cases, including both INT8 boundary cases. Its cycle-level done check verifies the implemented start-to-done latency as three clock periods, equivalent to 30 ns at the 100 MHz target clock.
+Cycle 1: 4/4 multiplier lanes active = 100% multiplication-lane utilization.
+Cycle 2: 4/4 active = 100%.
+Cycle 3: 1/4 active = 25%.
 
-## Prediction vs Measurement
+Across the three product-generation cycles, raw multiplication-lane utilization is:
 
-| Metric | Prediction | Measured/Verified | Status |
-|---|---:|---:|---|
-| Product width | INT16 | Boundary cases correct | PASS |
-| S0/S1 width | INT18 | Boundary case correct | PASS |
-| T width | INT19 | Boundary case correct | PASS |
-| Final result width | INT32 | Boundary cases correct | PASS |
-| Maximum positive result | 147456 | 147456 | PASS |
-| Maximum negative result | -146304 | -146304 | PASS |
-| Start-to-result latency | 30 ns for implemented schedule | 3 clocks = 30 ns at 100 MHz | PASS |
-| Functional directed tests | 7 cases | 7/7 pass | PASS |
+9 / (3 x 4) = 75%.
 
-## Resource Prediction — Not Yet Measured
+This is a prediction for multiplication-lane activity and does not include reduction hardware utilization.
 
-The architecture is intended to expose four parallel multiplier lanes during the first two product groups. The third group uses one multiplier lane for P8 unless the architecture is later changed to exploit otherwise idle lanes.
+## Resource Prediction
 
-Across the nine product operations and three product-generation groups, raw multiplication-lane utilization is:
+Predicted architectural resources:
 
-9 / (3 x 4) = 75%
+- Four parallel multiplier operations.
+- Three additions for a balanced four-input reduction.
+- One shared INT32 accumulator register.
+- Additional intermediate registers according to the implemented pipeline boundaries.
 
-This is an activity prediction, not a synthesized resource utilization figure.
+Exact DSP/LUT/FF mapping remains unknown until Vivado synthesis.
 
-Exact DSP/LUT mapping remains unknown until Vivado synthesis and must be measured rather than assumed.
+## Timing Prediction
 
-## Timing Prediction — Not Yet Measured
+At 100 MHz, each cycle provides 10 ns.
 
-At 100 MHz, one clock period is 10 ns. Behavioral simulation verifies functional behavior but does not establish FPGA timing closure.
+The current low-latency schedule can place dependent additions in the same cycle. That reduces behavioral latency but may increase the critical path compared with a more deeply registered four-stage implementation.
 
-The critical path must be measured after synthesis and implementation, especially through the reduction network and final addition.
-
-## Architectural Observation
-
-The implemented RTL favors lower start-to-result latency by overlapping final arithmetic work. This differs from the earlier conservative Option A prediction. Timing closure will determine whether this latency optimization is worth its combinational delay.
+No numerical implementation delay is claimed before synthesis and implementation.
 
 ## Next Step
 
-Run Vivado synthesis/implementation and measure LUT usage, DSP usage, register usage, worst negative slack, maximum achievable clock frequency, and the critical path through the reduction/final-add logic. These measured values will replace predictions where appropriate.
+Run Vivado synthesis for the actual target FPGA and record LUTs, FFs, DSP usage, inferred multiplier implementation, worst negative slack, total negative slack, and maximum achievable frequency. Compare those measurements against the predictions above.
