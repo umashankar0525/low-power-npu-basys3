@@ -46,26 +46,34 @@ module tb_4mac_datapath;
             weight4 = w4; weight5 = w5; weight6 = w6; weight7 = w7;
             activation8 = a8; weight8 = w8;
 
+            // Independent reference: direct mathematical convolution sum.
             ref = a0*w0 + a1*w1 + a2*w2 + a3*w3 +
                   a4*w4 + a5*w5 + a6*w6 + a7*w7 + a8*w8;
             expected = ref;
 
+            // START is presented before the active edge that accepts it.
             @(negedge clk);
             start = 1'b1;
             @(negedge clk);
             start = 1'b0;
 
-            repeat (3) begin
-                @(negedge clk);
+            // The start-accepting edge is stage/cycle 1. Therefore the
+            // result/done edge occurs three clock periods later.
+            // Check the two intermediate edges first.
+            repeat (2) begin
+                @(posedge clk);
+                #1;
                 if (done !== 1'b0) begin
                     $display("FAIL case %0d: done asserted too early at %0t", case_id, $time);
                     failures = failures + 1;
                 end
             end
 
-            @(negedge clk);
+            // Third edge after start acceptance: result and done are valid.
+            @(posedge clk);
+            #1;
             if (done !== 1'b1) begin
-                $display("FAIL case %0d: done not asserted at expected cycle", case_id);
+                $display("FAIL case %0d: done not asserted at expected latency", case_id);
                 failures = failures + 1;
             end
             if ($signed(result) !== expected) begin
@@ -75,7 +83,8 @@ module tb_4mac_datapath;
                 $display("PASS case %0d: result=%0d at %0t", case_id, $signed(result), $time);
             end
 
-            @(negedge clk);
+            @(posedge clk);
+            #1;
             if (done !== 1'b0) begin
                 $display("FAIL case %0d: done did not return low", case_id);
                 failures = failures + 1;
