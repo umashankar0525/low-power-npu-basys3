@@ -19,6 +19,20 @@ Phase 2 — 4-MAC Compute Datapath + Scheduling.
 
 Four multiplier operations must be supported in parallel because four products are generated per compute group.
 
+### Product-width derivation
+
+For signed INT8 operands:
+
+- Range of each operand: -128 to +127.
+- The largest positive product is (-128) x (-128) = 16384.
+- A signed 15-bit value has range -16384 to +16383, so 16384 does not fit.
+- A signed 16-bit value has range -32768 to +32767, so every possible INT8 x INT8 product fits.
+- The opposite-sign extreme, (-128) x 127 = -16256, also fits in signed INT16.
+
+Therefore the minimum product width is **16 signed bits (INT16)**.
+
+This is a mathematical width requirement, not yet a claim about whether Vivado will map the multiplier into DSP or LUT resources.
+
 The selected architecture requires one long-lived INT32 accumulator register rather than four independent INT32 accumulators.
 
 The balanced four-input reduction requires three additions total:
