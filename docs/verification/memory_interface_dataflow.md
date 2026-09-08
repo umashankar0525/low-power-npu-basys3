@@ -1,149 +1,179 @@
-# Memory Interface and Dataflow — Verification Plan
+# Memory Interface and Dataflow — Verification Report
 
 **Project:** Low-Power INT8 NPU on Basys 3  
 **Phase:** Phase 3 — Memory Interface and Dataflow  
 **Role:** Verification Engineer  
-**Status:** Verification plan and testbench created; simulation measurement pending.
+**Status:** **XSim behavioral simulation passed**
 
 ## 1. Verification Objective
 
-The primary objective is to prove that `memory_interface_dataflow` correctly handles a **one-cycle synchronous BRAM read latency**.
+The primary objective was to prove that `memory_interface_dataflow` correctly handles a **one-cycle synchronous BRAM read latency**.
 
-A zero-latency memory model is not sufficient because it can make data visible earlier than real synchronous BRAM and can allow an incorrect controller schedule to appear correct.
+The testbench intentionally models synchronous memory behavior instead of zero-latency combinational reads. This prevents an incorrect controller from appearing correct merely because memory data arrives unrealistically early.
 
 ## 2. Assumptions
 
-- Clock frequency for latency interpretation: 100 MHz.
+- Clock frequency: 100 MHz.
 - Clock period: 10 ns.
-- Activation and weight memories are modeled as synchronous one-cycle-latency memories.
-- The DUT requests word addresses 0, 1, and 2.
-- The testbench returns the data associated with a request one clock later.
-- The DUT uses four INT8 lanes per returned word.
-- The final word has one useful product and three zero lanes.
-- Reset is synchronous to `clk`, matching the DUT implementation.
+- Activation and weight memories have one-cycle synchronous read latency.
+- The DUT requests addresses 0, 1, and 2.
+- The final word contains one useful lane and three zero lanes.
+- Reset is synchronous to `clk`.
 
-## 3. Expected Controller Schedule
+## 3. Expected Timing Derivation
 
 For the current registered-accumulator RTL:
 
-| Rising edge | Expected DUT behavior |
+| Rising edge | Expected behavior |
 |---|---|
-| 1 | `start` accepted; request address 0 |
-| 2 | request address 1; word 0 is now available |
-| 3 | consume word 0; request address 2; word 1 is now available |
-| 4 | consume word 1; word 2 is now available |
+| 1 | `start` accepted; request word 0 |
+| 2 | request word 1; word 0 becomes valid after the edge |
+| 3 | consume word 0; request word 2; word 1 becomes valid after the edge |
+| 4 | consume word 1; word 2 becomes valid after the edge |
 | 5 | consume word 2; register final result; assert `done` |
 
-The start-to-done interval is therefore predicted to be four clock periods:
+There are five participating rising edges, but the elapsed interval from the start-accepting edge to the done edge is four clock periods:
 
 `4 x 10 ns = 40 ns`.
 
-Five rising edges participate when counting the start edge and the final done edge.
+## 4. Testbench Stimulus
 
-## 4. Verification Strategy
+The three packed memory words were deliberately chosen to produce distinct partial sums:
 
-### Test 1 — Reset
+- Word 0: `S0 = 10`
+- Word 1: `S1 = 20`
+- Word 2: `S2 = 30`
 
-Confirm that reset returns the DUT to idle:
-
-- `done = 0`
-- `result = 0`
-- no memory read request
-- address/control state is idle.
-
-### Test 2 — Address sequencing
-
-After `start`, confirm the requested addresses are exactly:
-
-`0 → 1 → 2`
-
-and that no unexpected fourth memory request occurs.
-
-### Test 3 — BRAM latency alignment
-
-The behavioral memory must intentionally delay returned data by one clock. The scoreboard records each requested address and checks that the DUT's processing state consumes the corresponding delayed word.
-
-This is the central verification test.
-
-### Test 4 — Partial-sum accumulation
-
-Use three words with distinct known partial sums. A convenient test is:
-
-- Word 0 produces `S0 = 10`
-- Word 1 produces `S1 = 20`
-- Word 2 produces `S2 = 30`
-
-Expected final result:
+Therefore the independent expected result is:
 
 `0 + 10 + 20 + 30 = 60`.
 
-### Test 5 — Sign handling
+The testbench also asserted `start` while the DUT was busy to check that the active transaction was not corrupted.
 
-Exercise positive and negative INT8 values, including negative times positive and negative times negative products. Compare the DUT result against a software-style integer reference calculation in the testbench.
+## 5. Measured XSim Results
 
-### Test 6 — Maximum product/accumulation boundary
+Vivado XSim reported:
 
-Exercise `(-128) x (-128) = 16384` and combinations that reach the known nine-product positive bound of 147456. This checks signed multiplication, partial-sum width, sign extension, and INT32 accumulation.
+`PASS: memory latency, address sequencing, accumulation, and completion timing verified.`
 
-### Test 7 — Final-word-only activity
+The simulation completed at approximately **76 ns** because the testbench performs its final checks one clock after completion before calling `$finish`.
 
-Set the first two words to zero and make only the useful lane of word 2 non-zero. This detects an off-by-one-word error because the final contribution must appear only when word 2 is consumed.
+The waveform shows:
 
-### Test 8 — Busy/start behavior
+- `activation_addr`: 0 → 1 → 2
+- `weight_addr`: 0 → 1 → 2
+- `request_count`: 3
+- `error_count`: 0
+- final `result`: `0x0000003C` = 60 decimal
+- `done`: asserted only for the completion pulse
 
-Assert `start` while the controller is already processing a convolution. The test should document whether the interface intentionally ignores the new start or has another defined behavior. The current FSM has no explicit restart path while busy, so the expected behavior is that the active transaction continues.
+The observed final result of 60 agrees with the independently derived reference result.
 
-## 5. Scoreboard Method
+## 6. Signal-by-Signal Interpretation
 
-The testbench computes the expected mathematical result independently:
+### `start`
 
-`expected = sum(input[i] * weight[i])` for `i = 0..8`.
+`start` is accepted only while the FSM is in `ST_IDLE`. The testbench also asserted `start` while busy; the active computation continued without being restarted or corrupted.
 
-The testbench does not infer correctness from `done` alone. It checks:
+### `activation_rd_en` and `weight_rd_en`
 
-1. memory request sequence,
-2. one-cycle memory response behavior,
-3. final result,
-4. exact completion timing.
+Both enables are asserted for exactly the three required memory request cycles. The measured `request_count = 3` confirms there was no fourth request.
 
-## 6. Why the One-Cycle Memory Model Matters
+### `activation_addr` and `weight_addr`
 
-With a combinational/zero-latency model, changing the address can immediately change `activation_data` and `weight_data`. A controller that incorrectly assumes data is available in the same edge can therefore pass.
+Both memories follow the required sequence:
 
-With a synchronous model, address N is requested first and its data becomes valid only after the corresponding clock edge. The DUT must therefore have the correct FSM state and timing to consume the returned word.
+`0 → 1 → 2`.
 
-The testbench deliberately models this latency so the simulation represents the architectural contract the controller was designed for.
+The testbench also checks that their addresses agree during every request.
 
-## 7. Pass Criteria
+### `activation_data` and `weight_data`
 
-The module passes only if all of the following are true:
+The behavioral memories update their outputs with nonblocking assignments on the rising edge. Therefore the requested word becomes visible after that edge rather than before it. This models the one-cycle synchronous-read contract.
 
-- reset returns to idle;
-- address sequence is exactly `0,1,2`;
-- each returned word is consumed one cycle after its request;
-- partial sums contribute in the correct order;
-- signed arithmetic matches the reference model;
-- final result matches the reference model;
-- `done` occurs at the predicted completion edge;
-- no extra memory request occurs after the final word;
-- a start while busy does not corrupt the active transaction.
+The waveform/testbench checks confirm that word 0 is available after the request for address 0, word 1 after the request for address 1, and word 2 after the request for address 2.
 
-A passing result is not considered sufficient by itself. The waveform must show why each signal has the expected value at each relevant edge.
+### `accumulator`
 
-## 8. Measurement to Perform in Vivado XSim
+Measured progression:
 
-Record:
+`0 → 10 → 30`
 
-- cycle number of `start` acceptance,
-- cycle numbers and values of `activation_addr` and `weight_addr`,
-- cycle in which each memory word becomes valid,
-- cycle in which each partial sum is captured,
-- accumulator progression,
-- cycle of `done`,
-- final `result`.
+The third partial sum is incorporated directly into the registered `result`, giving:
 
-Then compare measured values against the predictions in `docs/analysis/memory_interface_dataflow.md`.
+`30 + 30 = 60`.
 
-## 9. Verification Conclusion
+This demonstrates that the controller did not consume the memory words one cycle too early.
 
-The verification is specifically designed to catch the most important architectural risk: confusing a synchronous BRAM's **request timing** with its **data-availability timing**. The behavioral memory model therefore contains an explicit one-cycle delay. Simulation is still required before declaring the RTL correct.
+### `done`
+
+`done` is low before completion, high on the final-word completion edge, and low again on the following clock. The testbench therefore verifies that it behaves as a one-cycle completion pulse.
+
+### `result`
+
+The final registered result is:
+
+`60 decimal = 0x0000003C`.
+
+It remains 60 after `done` returns low.
+
+## 7. Why This Proves BRAM-Latency Handling
+
+The strongest evidence is not simply the final value of 60. The testbench uses a synchronous memory model and checks the temporal relationship between:
+
+1. memory request,
+2. delayed memory response,
+3. accumulator update.
+
+For example, after the first request, the returned word is visible at the next edge/cycle, while the accumulator remains zero until the following processing edge. This demonstrates that the controller does not treat the BRAM response as immediately available in the request edge.
+
+If the controller had consumed the data one cycle too early, the accumulator checks would fail and the final result would not reliably be 60 under this memory model.
+
+## 8. Observed vs Predicted
+
+| Metric | Predicted | Measured |
+|---|---:|---:|
+| Clock period | 10 ns | 10 ns |
+| Memory requests | 3 | 3 |
+| Address sequence | 0, 1, 2 | 0, 1, 2 |
+| Partial sum 0 | 10 | 10 |
+| Partial sum 1 | 20 | 20 |
+| Partial sum 2 | 30 | 30 |
+| Final result | 60 | 60 (`0x3C`) |
+| Start → done | 40 ns | 40 ns by edge-to-edge schedule |
+| Error count | 0 | 0 |
+| Simulation status | Pass required | **PASS** |
+
+## 9. Important Note About the 76 ns `$finish` Time
+
+The waveform cursor is near 76 ns when the simulation ends. This should **not** be interpreted as the controller latency.
+
+The testbench accepts `start` on an earlier clock edge, reaches `done` on the fifth participating edge, then waits one additional clock to verify that `done` returns low and `result` remains stable before calling `$finish`.
+
+Therefore the relevant controller measurement is **start edge → done edge = 40 ns**, not 76 ns.
+
+## 10. Non-Fatal Vivado Message
+
+Vivado 2018.2 printed a Webtalk message indicating that it could not read a path beginning with `C:/Users/UMA`. This occurred during the Webtalk/elaboration reporting step and did **not** prevent Verilog compilation, elaboration, or XSim execution.
+
+The simulation itself compiled, elaborated, ran, printed the PASS message, and called `$finish` normally.
+
+## 11. Verification Conclusion
+
+**PASS.** The current `memory_interface_dataflow` controller correctly handles the modeled one-cycle synchronous memory latency for the verified transaction.
+
+The verification demonstrates:
+
+- correct request sequencing,
+- correct delayed-data alignment,
+- correct running accumulation,
+- correct final result,
+- correct completion timing,
+- no extra memory request,
+- no corruption from `start` while busy.
+
+This establishes functional confidence for the current memory/dataflow schedule. It does not yet replace broader signed-arithmetic stress testing or post-synthesis timing/resource verification.
+
+## 12. Next Required Step
+
+Update the performance analysis with these measured simulation results, then proceed to design review. Additional randomized and boundary-value tests should be added before considering the verification suite complete.
