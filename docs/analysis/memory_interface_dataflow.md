@@ -3,11 +3,11 @@
 **Project:** Low-Power INT8 NPU on Basys 3  
 **Phase:** Phase 3 — Memory Interface and Dataflow  
 **Role:** Performance Analyst  
-**Status:** Prediction; corrected RTL-level timing interpretation; no simulation measurements yet.
+**Status:** Prediction compared with XSim measurement.
 
 ## 1. Scope
 
-This analysis predicts latency, bandwidth, throughput, and resource usage for the selected memory/dataflow architecture and records the corrected timing interpretation needed for verification.
+This analysis predicts latency, bandwidth, throughput, and resource usage for the selected memory/dataflow architecture and compares the controller timing prediction with the completed XSim verification.
 
 ## 2. Assumptions
 
@@ -161,39 +161,46 @@ Likely critical paths are:
 
 Timing reports must determine which path actually limits Fmax.
 
-## 11. Prediction Summary
+## 11. Prediction vs Measurement
 
-| Metric | Prediction |
-|---|---:|
-| Clock | 100 MHz |
-| Clock period | 10 ns |
-| Convolution products | 9 |
-| Packed words / convolution | 3 |
-| MAC lanes | 4 |
-| Activation memory width | 32 bits |
-| Weight memory width | 32 bits |
-| Parallel operand bandwidth | 64 bits/request cycle |
-| Packing efficiency | 75% |
-| Partial sum width | 18 bits |
-| Final accumulator width | 32 bits |
-| BRAM prediction | 2 memories; implementation to be measured |
-| DSP prediction | 0 based on prior project synthesis behavior |
-| Steady-state convolution throughput | 1 / 3 processing cycles |
-| Ideal throughput @100 MHz | ~33.33 Mconv/s |
-| Start edge → done edge | 40 ns predicted for current RTL |
-| Active edges including start and done | 5 |
+| Metric | Prediction | XSim measurement | Status |
+|---|---:|---:|---|
+| Clock | 100 MHz | 100 MHz testbench clock | Match |
+| Clock period | 10 ns | 10 ns | Match |
+| Packed words / convolution | 3 | 3 requests | Match |
+| Address sequence | 0 → 1 → 2 | 0 → 1 → 2 | Match |
+| BRAM read latency | 1 cycle | 1 cycle modeled and verified | Match |
+| Partial sums | 10, 20, 30 | Accumulator 0 → 10 → 30, final +30 | Match |
+| Final result | 60 | 60 (`0x3C`) | Match |
+| Start edge → done edge | 40 ns | 40 ns | Match |
+| Active edges including start/done | 5 | 5 | Match |
+| Extra memory request | 0 | 0; request count = 3 | Match |
+| Verification errors | 0 expected | 0 observed | Match |
 
-## 12. Verification Targets
+The XSim log reported:
 
-Simulation must measure and compare:
+`PASS: memory latency, address sequencing, accumulation, and completion timing verified.`
 
-- address sequence `0 → 1 → 2`,
-- one-cycle BRAM response latency,
-- which data word is consumed in each processing state,
-- accumulator values after S0 and S1,
-- final result after S2,
-- exact `start` to `done` edge count,
-- rejection/handling of `start` while busy,
-- reset behavior.
+The simulation therefore confirms the predicted controller timing for the exercised test case.
 
-No measured values are claimed until XSim simulation is run.
+## 12. Interpretation of the Measurement
+
+The most important measured result is not merely the final value of 60. The testbench deliberately modeled synchronous memory behavior and checked that word 0 was not consumed too early, that word 1 followed it, and that word 2 was used for the final result.
+
+The three-request count is also important. A 3x3 single-channel convolution contains nine values, and each 32-bit memory word carries four INT8 values. Therefore:
+
+`ceil(9 / 4) = 3 words`.
+
+A fourth request would indicate unnecessary memory traffic or a control-sequencing error for this fixed-size operation.
+
+## 13. Remaining Measurement Work
+
+The timing/dataflow test is successful, but full module characterization still requires:
+
+- signed INT8 boundary cases,
+- maximum positive and negative accumulation cases,
+- randomized vectors compared against an independent reference,
+- synthesis resource measurements,
+- post-synthesis timing/Fmax measurement.
+
+Therefore this analysis is **validated for the tested memory-latency/control scenario**, not yet a claim of exhaustive functional verification.
