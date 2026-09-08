@@ -20,6 +20,7 @@ Feed the four MAC units with four activation/weight pairs per computation cycle 
 - 32-bit word width for each memory
 - Synchronous BRAM read latency: 1 cycle
 - Final accumulation: INT32
+- For this design discussion, a registered partial-sum/accumulator update is treated as one sequential stage per input word.
 
 ## Selected Architecture
 
@@ -69,6 +70,34 @@ Final result:
 
 `Result = S0 + S1 + S2`
 
+## Running-Accumulator Architecture
+
+The preferred control/dataflow organization is to maintain one INT32 running accumulator rather than storing all three partial sums and adding them afterward:
+
+- Initial state: `ACC = 0`
+- Word 0 produces `S0`; update: `ACC = ACC + S0`
+- Word 1 produces `S1`; update: `ACC = ACC + S1`
+- Word 2 produces `S2`; update: `ACC = ACC + S2`
+- After the third update, `ACC` is the final convolution result.
+
+For example, if `S0=100`, `S1=200`, and `S2=50`:
+
+`ACC0 = 0`
+
+`ACC1 = 0 + 100 = 100`
+
+`ACC2 = 100 + 200 = 300`
+
+`ACC3 = 300 + 50 = 350`
+
+This removes the need for a separate final three-way accumulation stage and lets each partial sum be consumed as soon as it is produced.
+
+## Why This Is Useful
+
+The architecture overlaps memory access with computation and also overlaps accumulation with the stream of partial sums. The datapath therefore behaves like a small streaming reduction: fetch a word, compute four products, reduce them, add the partial sum to `ACC`, and continue.
+
+The important distinction is that overlap reduces idle cycles; it does not reduce the physical one-cycle BRAM read latency or make a MAC operation occur instantaneously.
+
 ## Proposed Control/Data Interface
 
 ### External/control signals
@@ -95,17 +124,19 @@ The exact signal naming and registered boundaries will be finalized before RTL g
 
 ## Preliminary Cycle Schedule
 
-With one-cycle synchronous BRAM latency:
+With one-cycle synchronous BRAM latency, memory requests and computation are overlapped. The exact `done` edge still depends on the chosen registered boundaries and must be derived in `/analyze` before RTL generation.
 
-| Cycle | Activation/weight memory | Compute |
+Conceptually:
+
+| Cycle | Memory action | Datapath action |
 |---|---|---|
-| 1 | Request address 0 in both memories | Waiting for data |
-| 2 | Request address 1 | Use Word 0 in four MAC lanes |
-| 3 | Request address 2 | Use Word 1 |
-| 4 | No further request | Use Word 2 |
-| 5 | No request | Final accumulation available under the simplified one-cycle-stage model |
+| 1 | Request address 0 in both memories | Waiting for Word 0 |
+| 2 | Request address 1 | Use Word 0, form S0, update ACC |
+| 3 | Request address 2 | Use Word 1, form S1, update ACC |
+| 4 | No further request | Use Word 2, form S2, update ACC to final value |
+| 5 or later | No request | `done`/result timing depends on registered result boundary |
 
-This schedule overlaps the next memory request with current computation.
+The schedule intentionally does not claim a final latency yet; that is an analysis-phase responsibility.
 
 ## Architectural Principle
 
@@ -129,4 +160,4 @@ or eight INT8 operand values per memory-access cycle.
 
 ## Next Design Task
 
-Before RTL generation, derive the exact FSM states and registered timing for BRAM request, BRAM response capture, MAC enable, partial-sum reduction, accumulator update, and `done` generation. The analysis phase must predict latency and resource behavior before simulation.
+Before RTL generation, `/analyze` must derive the exact cycle-by-cycle timing for BRAM request, BRAM response capture, four MAC operations, partial-sum reduction, running-accumulator update, and `done` generation. Resource predictions must also be derived from first principles.
