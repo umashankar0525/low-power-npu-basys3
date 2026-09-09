@@ -3,7 +3,7 @@
 **Role:** Performance Analyst  
 **Active Phase:** Phase 4 — Activation and Output Processing  
 **Module:** `relu_activation`  
-**Status:** Prediction completed; RTL generated; behavioral simulation measured.
+**Status:** Prediction completed; RTL generated; behavioral simulation measured; synthesis/resource measurement completed; implementation timing pending.
 
 ## 1. Purpose
 
@@ -35,7 +35,9 @@ This combines ReLU with **signed INT8 saturation** so that the output is always 
    \]
 7. Vivado/Xilinx synthesis maps the comparison, multiplexing, and constant generation into FPGA LUT/carry logic as appropriate.
 8. No DSP block is required for this function.
-9. Behavioral simulation does not measure physical FPGA propagation delay. Actual post-synthesis/post-implementation timing remains to be measured.
+9. Behavioral simulation does not measure physical FPGA propagation delay.
+10. The supplied synthesis report is for the standalone `relu_activation` top, so its I/O count reflects the module ports rather than the final integrated NPU interface.
+11. Because the standalone ReLU module has no clock, a meaningful register-to-register 100 MHz timing path cannot be obtained from this top alone. Integrated timing remains to be measured.
 
 ## 3. Functional Decision Derivation
 
@@ -128,7 +130,7 @@ If the upstream accumulator register changes immediately after a clock edge, the
 Therefore:
 
 - Additional pipeline cycles: **0 predicted**
-- Physical combinational delay: **not measured by behavioral simulation**
+- Physical combinational delay: **not measured by behavioral simulation or standalone synthesis utilization**
 - Available timing budget at 100 MHz: **10 ns**, shared with other combinational logic in the same pipeline stage
 
 ## 7. Timing-Critical Logic Prediction
@@ -149,7 +151,7 @@ O = x[31] \lor x[30] \lor \dots \lor x[7]
 
 with the negative test evaluated first by the control priority.
 
-On the target Artix-7 FPGA, this should be substantially simpler than the INT8×INT8 MAC datapath. Nevertheless, the exact delay must be established from synthesis and implementation timing reports rather than assumed.
+On the target Artix-7 FPGA, this should be substantially simpler than the INT8×INT8 MAC datapath. Nevertheless, the exact delay must be established from implementation timing reports rather than assumed.
 
 ## 8. Resource-Usage Prediction
 
@@ -160,8 +162,6 @@ A small number of LUTs is expected for:
 - wide non-zero detection of `x[31:7]`
 - output selection
 - any synthesis-generated comparison/mux logic
-
-The exact LUT count is implementation-dependent.
 
 ### Flip-flops
 
@@ -265,46 +265,142 @@ Because the DUT has no clock, the testbench advances simulation time using its o
 
 The XSim log also states that the simulator was configured to run for 1000 ns, but `$finish` terminated the testbench earlier at 117 ns.
 
-## 13. Predicted vs Measured Checklist
+## 13. Synthesis Resource Measurement
+
+The supplied Vivado 2018.2 synthesis report is explicitly for:
+
+- **Design:** `relu_activation`
+- **Device:** `7a35tcpg236-1`
+- **Design state:** Synthesized
+- **Tool:** Vivado 2018.2
+
+The synthesis completed successfully with **0 errors, 0 critical warnings, and 0 warnings**.
+
+### Measured resources
+
+| Resource | Prediction | Synthesized measurement | Interpretation |
+|---|---:|---:|---|
+| Slice LUTs | Small | **13** | MATCH; 0.06% of 20,800 LUTs |
+| LUT as Logic | Small | **13** | All used LUTs implement logic |
+| Slice Registers | 0 | **0** | MATCH |
+| BRAM | 0 | **0** | MATCH |
+| DSP | 0 | **0** | MATCH |
+| F7/F8 Muxes | 0 expected | **0 / 0** | MATCH |
+
+The utilization fraction for LUTs is derived directly from the report:
+
+\[
+\frac{13}{20800}\times100 = 0.0625\% \approx 0.06\%
+\]
+
+For registers, DSPs, and BRAMs:
+
+\[
+\frac{0}{41600}=0\%,\qquad
+\frac{0}{90}=0\%,\qquad
+\frac{0}{50}=0\%
+\]
+
+### Primitive-level observation
+
+The synthesis report shows:
+
+- `LUT5`: 10
+- `LUT4`: 3
+- `IBUF`: 32
+- `OBUF`: 8
+
+The internal logic therefore maps to exactly **13 LUT primitives**, consistent with the top-level LUT utilization. The RTL component statistics also identify **two 2-input 8-bit muxes**. This is consistent with the expected implementation of the three-way decision using mux logic and constant values.
+
+### Important I/O interpretation
+
+The standalone synthesis report shows:
+
+- **40 Bonded IOBs used**
+- **106 Bonded IOBs available**
+- Utilization:
+  \[
+  \frac{40}{106}\times100 \approx 37.74\%
+  \]
+
+The primitive report explains this as **32 IBUF + 8 OBUF = 40 I/O buffers**.
+
+This is **not an internal ReLU resource cost**. It exists because `relu_activation` was synthesized as the top-level design and therefore its 32-bit input and 8-bit output are external ports. In the final NPU, these signals should be internal connections between accelerator blocks, so the 40 IOB count should not be carried into the system-level resource estimate.
+
+## 14. Timing Measurement Status
+
+The synthesis log explicitly reports:
+
+> `No constraint files found.`
+
+It also reports:
+
+> `WARNING: [Constraints 18-5210] No constraint will be written out.`
+
+Therefore the synthesis run does **not** establish that the ReLU stage meets the 100 MHz requirement.
+
+This is expected for the standalone module because `relu_activation` has **no clock port** and contains no sequential elements. There is no register-to-register timing path for Vivado to analyze as a normal 100 MHz synchronous path.
+
+The correct next timing measurement is therefore an **integrated timing wrapper or integrated accelerator path** containing:
+
+```text
+upstream accumulator register
+          |
+          v
+     relu_activation
+          |
+          v
+ downstream output register
+```
+
+with a 100 MHz clock constraint. The resulting register-to-register setup slack will determine whether the ReLU logic fits in the actual 10 ns stage budget.
+
+A fake clock should not be added directly to the combinational ReLU module merely to manufacture a timing number, because that would not represent the real architecture.
+
+## 15. Predicted vs Measured Checklist
 
 | Metric | Predicted | Measured/observed | Status |
 |---|---:|---:|---|
 | Architectural latency | 0 cycles | 0-cycle combinational behavior verified; no clock used | MATCH |
-| Clock period | 10 ns at 100 MHz | Not exercised by standalone DUT | N/A |
-| Additional FFs | 0 | Behavioral simulation does not establish synthesized FF count | TBD synthesis |
-| DSPs | 0 | Behavioral simulation does not establish DSP usage | TBD synthesis |
-| BRAMs | 0 | Behavioral simulation does not establish BRAM usage | TBD synthesis |
-| LUTs | Small | Not measured yet | TBD synthesis |
-| Physical combinational delay | Expected to fit within timing budget | Not measurable from behavioral simulation | TBD implementation timing |
+| Clock period | 10 ns at 100 MHz | Not applicable to standalone ReLU top | N/A |
+| Additional FFs | 0 | **0** synthesized | MATCH |
+| DSPs | 0 | **0** synthesized | MATCH |
+| BRAMs | 0 | **0** synthesized | MATCH |
+| LUTs | Small | **13 LUTs** synthesized | MATCH |
+| Physical combinational delay | Expected to fit within timing budget | Not measured | TBD integrated implementation timing |
 | Dynamic power | Small contribution expected | Not measured | TBD power analysis |
-| Functional correctness | Boundary cases should pass | 117 pass, 0 fail | MATCH |
+| Functional correctness | Boundary cases should pass | **117 pass, 0 fail** | MATCH |
 
-## 14. Interpretation of the Measurement
+## 16. Performance Interpretation
 
-The behavioral result strongly supports the **functional prediction**: the ReLU/saturation logic correctly implements the three required regions:
+The synthesis result is a strong confirmation of the intended lightweight architecture.
 
-1. Negative INT32 → `0`.
-2. `0..127` → exact INT8 representation.
-3. Values `128..INT32_MAX` → `127`.
+The ReLU/saturation block consumes only **13 LUTs**, with **0 FF, 0 DSP, and 0 BRAM**. Relative to the available XC7A35T resources, the internal logic cost is negligible: 13 LUTs is only 0.06% of the available 20,800 LUTs.
 
-The most important functional boundary, `127 → 127` and `128 → 127`, passed. The negative boundary `-1 → 0` also passed, as did INT32 minimum and maximum values.
+This also validates an important architectural decision: the activation stage does not require a DSP or memory resource. Its function is dominated by simple bit inspection and output selection.
 
-The absence of a clock in the testbench is also consistent with the intended architecture. However, behavioral simulation cannot prove the **physical propagation delay** or the absence of synthesized registers. Those require synthesis and implementation reports.
+The measured 13-LUT result should not be confused with the earlier `four_mac_datapath` synthesis result of 691 LUTs. Those are different top-level designs and must remain separate measurements.
 
-## 15. Remaining Measurements
+## 17. Remaining Measurements
 
 The following measurements are still required before final design review:
 
-1. Synthesize `relu_activation` for `XC7A35T-1CPG236C-1`.
-2. Record LUT, FF, DSP, and BRAM utilization.
-3. Obtain the worst-case combinational path delay/slack after implementation.
-4. Confirm that the ReLU stage can meet the 100 MHz timing requirement when integrated into the accumulator-to-output path.
+1. Build an integrated accumulator-to-ReLU-to-output-register timing path.
+2. Apply the actual 100 MHz clock constraint to that integrated design.
+3. Obtain worst-case setup slack and data-path delay after implementation.
+4. Confirm that the ReLU stage does not become the critical path of the output stage.
 5. Perform power analysis only after realistic switching activity is available.
 
-## 16. Analysis Conclusion
+## 18. Analysis Conclusion
 
-The predicted functional behavior was confirmed by behavioral simulation: **117 tests passed and 0 failed**.
+The predictions for functional behavior and hardware resources were confirmed:
 
-The simulation validates the ReLU and signed-INT8 saturation decision logic, including the critical range boundaries and randomized inputs. It does **not** yet establish FPGA resource utilization, physical propagation delay, or power.
+- **117/117 behavioral tests passed.**
+- **0 FF** synthesized, matching the combinational design.
+- **0 DSP** synthesized, matching the absence of multiplier/DSP arithmetic.
+- **0 BRAM** synthesized, matching the absence of memory.
+- **13 LUTs** synthesized, confirming that the logic is small.
 
-Therefore the next engineering step is **synthesis/resource measurement**, followed by timing measurement. The central performance question remains timing closure rather than cycle count because the activation module intentionally introduces zero architectural clock cycles.
+The remaining performance question is **physical timing in the integrated pipeline**, not architectural latency. The standalone synthesis report cannot prove 100 MHz timing because no clock constraints and no sequential timing path exist in the standalone ReLU top.
+
+The next correct step is integrated timing measurement, followed by design review.
