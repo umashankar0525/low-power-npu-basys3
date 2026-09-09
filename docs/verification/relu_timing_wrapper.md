@@ -252,6 +252,12 @@ The latest observed run demonstrates that the basic wrapper behavior is largely 
 
 The verification is therefore **not yet complete**. The next testbench revision should first eliminate the stimulus race, then run long enough to complete all 100 randomized tests. Only after zero mismatches are obtained should the project proceed to implementation timing measurement.
 
-## 15. Next step
+## 15. User understanding checkpoint
 
-Revise the testbench stimulus/check timing to remove same-edge races, run the complete directed + back-to-back + 100-randomized suite, and inspect the waveform around the first back-to-back transaction. Only after functional verification passes should the project proceed to an XDC constraint and implementation timing measurement.
+The user correctly identified the underlying verification rule: **a synchronous input must be stable before the capture edge; it should not be changed at the same active edge on which the DUT is expected to sample it.**
+
+This is the key distinction between a deterministic synchronous testbench and a same-edge simulation race. The rule is not merely "do not change it exactly at the edge"; the stronger hardware concept is that the input must satisfy the receiving register's setup requirement before the edge. In behavioral simulation, driving on the falling edge provides a simple deterministic margin and avoids process-order races.
+
+## 16. Next step
+
+Revise the testbench stimulus/check timing to remove same-edge races, run the complete directed + back-to-back + 100-randomized suite, and inspect the waveform around the first back-to-back transaction. Only after zero mismatches are obtained should the project proceed to an XDC constraint and implementation timing measurement.
