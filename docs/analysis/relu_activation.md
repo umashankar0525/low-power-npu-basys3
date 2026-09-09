@@ -1,13 +1,13 @@
-# ReLU Activation — Performance Analysis (Predictions)
+# ReLU Activation — Performance Analysis
 
 **Role:** Performance Analyst  
 **Active Phase:** Phase 4 — Activation and Output Processing  
 **Module:** `relu_activation`  
-**Status:** Prediction only; no RTL generated in this phase.
+**Status:** Prediction completed; RTL generated; behavioral simulation measured.
 
 ## 1. Purpose
 
-This analysis predicts the latency, arithmetic behavior, resource usage, and timing implications of the proposed INT32-to-INT8 ReLU activation stage.
+This analysis predicts and then measures the latency, arithmetic behavior, resource implications, and timing considerations of the INT32-to-INT8 ReLU activation stage.
 
 The intended function is:
 
@@ -35,7 +35,7 @@ This combines ReLU with **signed INT8 saturation** so that the output is always 
    \]
 7. Vivado/Xilinx synthesis maps the comparison, multiplexing, and constant generation into FPGA LUT/carry logic as appropriate.
 8. No DSP block is required for this function.
-9. Actual post-synthesis/post-implementation propagation delay is not yet known and must be measured later.
+9. Behavioral simulation does not measure physical FPGA propagation delay. Actual post-synthesis/post-implementation timing remains to be measured.
 
 ## 3. Functional Decision Derivation
 
@@ -128,7 +128,7 @@ If the upstream accumulator register changes immediately after a clock edge, the
 Therefore:
 
 - Additional pipeline cycles: **0 predicted**
-- Physical combinational delay: **not yet measured**
+- Physical combinational delay: **not measured by behavioral simulation**
 - Available timing budget at 100 MHz: **10 ns**, shared with other combinational logic in the same pipeline stage
 
 ## 7. Timing-Critical Logic Prediction
@@ -216,38 +216,95 @@ Thus the predicted steady-state throughput remains approximately:
 
 This is a system-level prediction inherited from the current 4-MAC/3-word schedule, not a standalone ReLU throughput measurement.
 
-## 12. Verification Targets Before RTL Simulation
+## 12. Behavioral Simulation Measurement
 
-The future verification stage should explicitly test:
+### Testbench
 
-1. Negative minimum-like accumulator values → `0`.
-2. `-1` → `0`.
-3. `0` → `0`.
-4. `1` → `1`.
-5. `127` → `127`.
-6. `128` → `127`.
-7. Large positive INT32 values → `127`.
-8. The maximum expected convolution accumulator, `147456` → `127`.
-9. A negative value with many lower bits set → still `0`.
-10. No X/Z-dependent behavior in simulation for valid inputs.
+The unit testbench was executed with Vivado XSim using:
+
+- DUT: `rtl/activation/relu_activation.v`
+- Testbench: `tb/unit/tb_relu_activation.v`
+- Simulation type: behavioral simulation
+- Clock: **none**, because the DUT is combinational
+- Independent reference model: used by the testbench
+- Randomized coverage: 100 deterministic `$random` input cases in addition to directed cases
+
+### Observed results
+
+The XSim console reported:
+
+- **PASS count = 117**
+- **FAIL count = 0**
+- **RESULT: ALL TESTS PASSED**
+
+The directed cases included the important boundaries and extremes:
+
+| Input | Observed output | Expected behavior | Result |
+|---:|---:|---:|---|
+| -1 | 0 | ReLU to 0 | PASS |
+| -128 | 0 | ReLU to 0 | PASS |
+| -32768 | 0 | ReLU to 0 | PASS |
+| INT32_MIN | 0 | ReLU to 0 | PASS |
+| 0 | 0 | unchanged | PASS |
+| 1 | 1 | unchanged | PASS |
+| 126 | 126 | unchanged | PASS |
+| 127 | 127 | unchanged | PASS |
+| 128 | 127 | saturate | PASS |
+| 129 | 127 | saturate | PASS |
+| 130 | 127 | saturate | PASS |
+| 255 | 127 | saturate | PASS |
+| INT32_MAX | 127 | saturate | PASS |
+
+The randomized cases also produced zero failures. Representative examples included both large positive values mapping to `127` and large negative values mapping to `0`.
+
+### Simulation time interpretation
+
+The testbench called `$finish` at **117 ns**. This must **not** be interpreted as ReLU latency.
+
+Because the DUT has no clock, the testbench advances simulation time using its own `#1` settling delays between checks. Therefore the 117 ns completion time reflects the testbench execution schedule, not FPGA propagation delay or architectural latency.
+
+The XSim log also states that the simulator was configured to run for 1000 ns, but `$finish` terminated the testbench earlier at 117 ns.
 
 ## 13. Predicted vs Measured Checklist
 
-| Metric | Predicted now | Measured later |
-|---|---:|---:|
-| Architectural latency | 0 cycles | TBD |
-| Clock period | 10 ns at 100 MHz | TBD/confirmed by constraint |
-| Additional FFs | 0 | TBD |
-| DSPs | 0 | TBD |
-| BRAMs | 0 | TBD |
-| LUTs | Small | TBD |
-| Physical combinational delay | < available 10 ns budget expected | TBD from timing report |
-| Dynamic power | Small contribution expected | TBD from power analysis |
+| Metric | Predicted | Measured/observed | Status |
+|---|---:|---:|---|
+| Architectural latency | 0 cycles | 0-cycle combinational behavior verified; no clock used | MATCH |
+| Clock period | 10 ns at 100 MHz | Not exercised by standalone DUT | N/A |
+| Additional FFs | 0 | Behavioral simulation does not establish synthesized FF count | TBD synthesis |
+| DSPs | 0 | Behavioral simulation does not establish DSP usage | TBD synthesis |
+| BRAMs | 0 | Behavioral simulation does not establish BRAM usage | TBD synthesis |
+| LUTs | Small | Not measured yet | TBD synthesis |
+| Physical combinational delay | Expected to fit within timing budget | Not measurable from behavioral simulation | TBD implementation timing |
+| Dynamic power | Small contribution expected | Not measured | TBD power analysis |
+| Functional correctness | Boundary cases should pass | 117 pass, 0 fail | MATCH |
 
-## 14. Analysis Conclusion
+## 14. Interpretation of the Measurement
 
-The ReLU activation stage is predicted to be a very small combinational block with zero architectural latency and no DSP/BRAM requirement. The main functional risk is not ReLU itself but incorrect INT32-to-INT8 conversion; saturation must prevent positive values above 127 from wrapping into negative INT8 values.
+The behavioral result strongly supports the **functional prediction**: the ReLU/saturation logic correctly implements the three required regions:
 
-The principal performance question is therefore **timing closure**, not cycle count. The design should preserve the existing throughput if the combinational ReLU/saturation delay fits inside the available 100 MHz timing budget.
+1. Negative INT32 → `0`.
+2. `0..127` → exact INT8 representation.
+3. Values `128..INT32_MAX` → `127`.
 
-No RTL should be generated from this analysis until the design assumptions and predictions are confirmed by the user.
+The most important functional boundary, `127 → 127` and `128 → 127`, passed. The negative boundary `-1 → 0` also passed, as did INT32 minimum and maximum values.
+
+The absence of a clock in the testbench is also consistent with the intended architecture. However, behavioral simulation cannot prove the **physical propagation delay** or the absence of synthesized registers. Those require synthesis and implementation reports.
+
+## 15. Remaining Measurements
+
+The following measurements are still required before final design review:
+
+1. Synthesize `relu_activation` for `XC7A35T-1CPG236C-1`.
+2. Record LUT, FF, DSP, and BRAM utilization.
+3. Obtain the worst-case combinational path delay/slack after implementation.
+4. Confirm that the ReLU stage can meet the 100 MHz timing requirement when integrated into the accumulator-to-output path.
+5. Perform power analysis only after realistic switching activity is available.
+
+## 16. Analysis Conclusion
+
+The predicted functional behavior was confirmed by behavioral simulation: **117 tests passed and 0 failed**.
+
+The simulation validates the ReLU and signed-INT8 saturation decision logic, including the critical range boundaries and randomized inputs. It does **not** yet establish FPGA resource utilization, physical propagation delay, or power.
+
+Therefore the next engineering step is **synthesis/resource measurement**, followed by timing measurement. The central performance question remains timing closure rather than cycle count because the activation module intentionally introduces zero architectural clock cycles.
