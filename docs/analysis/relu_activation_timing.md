@@ -94,7 +94,33 @@ accumulator register -> ReLU/saturation -> output register
 
 under the real 100 MHz constraint.
 
-## 6. What Must Be Measured
+## 6. Timing-Wrapper Design Prediction
+
+Before RTL generation, the expected wrapper behavior is defined as follows:
+
+1. On clock edge **N**, the accumulator register launches a known INT32 value.
+2. During the interval from edge **N** to edge **N+1**, the combinational ReLU/saturation logic evaluates that value.
+3. The resulting INT8 value must become stable early enough to satisfy the output register's setup requirement.
+4. On edge **N+1**, the output register captures the ReLU result.
+5. Therefore, the ReLU logic receives one full clock period as its available timing window, subject to clock-to-Q, routing, setup, and any clock uncertainty represented by the timing constraints.
+
+The important distinction is that the output register captures **at edge N+1**; it does not capture sometime after N+1. If the data becomes stable too late, the path has negative setup slack and therefore violates timing.
+
+## 7. Expected Timing Prediction
+
+The ReLU logic contains sign detection, a reduction/non-zero check over `input_acc[31:7]`, and output selection. This is expected to be a small combinational path relative to the 10 ns clock period.
+
+A numerical implementation delay is **not assumed**. The prediction is only qualitative: the path should have positive slack at 100 MHz if placement, routing, clock constraints, and the surrounding wrapper do not introduce an unexpected bottleneck.
+
+For example, if the eventual report showed +2 ns slack, the measured path would have approximately 8 ns of available-to-arrival timing usage under a 10 ns requirement:
+
+\[
+T_{path}=10-2=8\,ns
+\]
+
+That would mean the path meets the 100 MHz requirement with 2 ns of timing margin. This remains an example until Vivado implementation produces the actual report.
+
+## 8. What Must Be Measured
 
 The implementation timing report should provide evidence for:
 
@@ -104,13 +130,9 @@ The implementation timing report should provide evidence for:
 4. Setup slack.
 5. Whether the ReLU path is the critical path of this stage.
 
-Vivado provides `report_timing` for reporting timing paths. The report must be generated from a properly constrained synchronous design, not inferred from behavioral simulation.
+Vivado provides `report_timing` for reporting timing paths. The AMD Vivado documentation describes `report_timing` as a command for reporting timing paths and supports setup/max-delay analysis and path selection options. citeturn1view0
 
-## 7. Expected Result Before Measurement
-
-Because the ReLU contains only sign detection, wide non-zero detection, and small output-selection logic, the prediction is that it should consume only a small fraction of the 10 ns stage budget. However, no numerical propagation delay or slack value will be claimed until implementation timing is actually measured.
-
-## 8. Measurement Discipline
+## 9. Measurement Discipline
 
 The next RTL wrapper must not be generated until the timing-wrapper concept is understood. After the wrapper is generated, the verification flow should establish that:
 
