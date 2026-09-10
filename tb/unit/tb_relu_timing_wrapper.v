@@ -55,10 +55,12 @@ module tb_relu_timing_wrapper;
         end
     endtask
 
-    // Apply input before edge N; verify its result after edge N+1.
+    // Drive the synchronous input on the falling edge so it is stable before
+    // the following rising-edge capture. Verify the result one rising edge later.
     task apply_and_check_one_cycle;
         input signed [31:0] test_value;
         begin
+            @(negedge clk);
             accumulator_input = test_value;
             @(posedge clk);
             @(posedge clk);
@@ -95,33 +97,41 @@ module tb_relu_timing_wrapper;
         apply_and_check_one_cycle(32'sh7fffffff);
 
         // Back-to-back pipeline alignment.
+        // Inputs are changed on falling edges, never on the capture edge.
+        @(negedge clk);
         accumulator_input = -32'sd25;
-        @(posedge clk);
+        @(posedge clk);             // Capture -25 into accumulator_reg.
+
+        @(negedge clk);
         accumulator_input = 32'sd42;
-        @(posedge clk);
+        @(posedge clk);             // Capture 42; output now reflects -25.
         #1;
         check_output(-32'sd25);
 
+        @(negedge clk);
         accumulator_input = 32'sd200;
-        @(posedge clk);
+        @(posedge clk);             // Capture 200; output now reflects 42.
         #1;
         check_output(32'sd42);
 
+        @(negedge clk);
         accumulator_input = 32'sd100;
-        @(posedge clk);
+        @(posedge clk);             // Capture 100; output now reflects 200.
         #1;
         check_output(32'sd200);
 
-        @(posedge clk);
+        @(posedge clk);             // No new input required; output reflects 100.
         #1;
         check_output(32'sd100);
 
-        // 100 randomized INT32 tests; each is checked one cycle later.
+        // 100 randomized INT32 tests; input is driven on a falling edge and
+        // checked one rising edge after its capture edge.
         for (i = 0; i < 100; i = i + 1) begin
             random_value = $random;
+            @(negedge clk);
             accumulator_input = random_value;
-            @(posedge clk);
-            @(posedge clk);
+            @(posedge clk);         // Capture random_value.
+            @(posedge clk);         // Capture its ReLU result at output register.
             #1;
             check_output(random_value);
         end
