@@ -6,6 +6,17 @@
 **Target:** XC7A35T-1CPG236C-1 / Basys 3  
 **Status:** Implementation timing measured; 100 MHz timing closure achieved.
 
+## Understanding checkpoint
+
+The user correctly identified the timing-summary abbreviations:
+
+- **WNS:** Worst Negative Slack — the worst setup slack among the analyzed setup paths. In this implementation it is **+6.213 ns**, so the worst setup path has positive margin.
+- **WHS:** Worst Hold Slack — the worst hold slack among the analyzed hold paths. In this implementation it is **+0.196 ns**, so the worst hold path passes.
+- **TNS:** Total Negative Slack — aggregate negative setup slack across failing setup endpoints. Here it is **0.000 ns**, with zero failing setup endpoints.
+- **THS:** Total Hold Slack — aggregate negative hold slack across failing hold endpoints. Here it is **0.000 ns**, with zero failing hold endpoints.
+
+Note: the user's phrase “THDS” should be **THS** (Total Hold Slack).
+
 ## 1. Objective
 
 Predict the timing behavior before running synthesis, placement, routing, and static timing analysis, then compare the prediction against the measured implementation result.
