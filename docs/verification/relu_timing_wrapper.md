@@ -162,7 +162,7 @@ The XSim run command uses:
 
 `run 1000ns`
 
-The current randomized test performs, for each of 100 values, two rising-edge waits before checking the result. With a 10 ns clock:
+The randomized test performs, for each of 100 values, two rising-edge waits before checking the result. With a 10 ns clock:
 
 `2 edges/test x 10 ns/edge = 20 ns/test`
 
@@ -178,15 +178,15 @@ A future run must either provide a sufficiently long simulation window or reduce
 
 ## 10. Observed functional failure — back-to-back first sample
 
-The corrected run showed one important failure:
+The earlier corrected run showed one important failure:
 
 `FAIL: t=186000 input=-25 output=42 expected=0`
 
 The expected result is 0 because -25 is negative. The observed 42 indicates that the testbench sampled the result corresponding to the next sample.
 
-The DUT itself has the intended one-cycle register behavior. The problem is a **testbench race condition** in the back-to-back sequence.
+The DUT itself has the intended one-cycle register behavior. The problem was a **testbench race condition** in the back-to-back sequence.
 
-The sequence currently changes `accumulator_input` immediately after `@(posedge clk)`. The DUT also executes its `always @(posedge clk)` process at that same simulation event. Both processes are scheduled in the same simulation time slot, so the testbench assignment and DUT register capture can occur in an ordering that is not safe to depend on.
+The sequence changed `accumulator_input` immediately after `@(posedge clk)`. The DUT also executes its `always @(posedge clk)` process at that same simulation event. Both processes are scheduled in the same simulation time slot, so the testbench assignment and DUT register capture can occur in an ordering that is not safe to depend on.
 
 That explains the observed value:
 
@@ -218,7 +218,32 @@ so falling-edge to rising-edge separation is:
 
 This gives the DUT a deterministic stimulus relationship in simulation.
 
-## 12. Expected timing interpretation after implementation
+## 12. Latest simulation result — race condition eliminated
+
+The updated testbench drives the synchronous input on `negedge clk` rather than changing it at the rising capture edge. The back-to-back sequence was also changed so every new sample is established before its intended capture edge.
+
+The latest Vivado 2018.2 XSim run produced **zero failures** for every transaction that completed before the simulator's 1000 ns limit.
+
+Observed result:
+
+- Reset check: **PASS**
+- Directed signed/ReLU/saturation checks: **8 PASS**
+- Back-to-back pipeline alignment checks: **4 PASS**
+- Randomized checks completed within the 1000 ns run: **39 PASS**
+- Total completed checks: **52 PASS**
+- Total failures: **0 FAIL**
+- XSim reported time resolution: **1 ps**
+- XSim run limit: **1000 ns**
+
+The console ended at randomized test index `0x27` (decimal 39), which is consistent with 39 completed randomized checks. The final displayed pass count was `0x34` (decimal 52), matching:
+
+`1 reset + 8 directed + 4 back-to-back + 39 randomized = 52 passes`
+
+This is strong evidence that the numerical ReLU/saturation behavior and the one-cycle wrapper alignment are correct for the transactions actually exercised.
+
+However, the verification suite is **not yet complete**, because the simulator stopped at 1000 ns before all 100 randomized tests could execute.
+
+## 13. Timing interpretation after implementation
 
 Once an XDC constraint creates a 100 MHz clock, the important physical path is:
 
@@ -232,7 +257,7 @@ with `Tclk = 10 ns`.
 
 Positive setup slack means the path meets the 10 ns requirement. Negative setup slack means the path violates the 100 MHz requirement.
 
-## 13. Pass criteria
+## 14. Pass criteria
 
 The module passes verification only if:
 
@@ -246,18 +271,28 @@ The module passes verification only if:
 
 A passing simulation is not yet a timing-closure result.
 
-## 14. Current verification status
+## 15. Current verification status
 
-The latest observed run demonstrates that the basic wrapper behavior is largely correct: the directed signed/ReLU/saturation cases align correctly after the sampling correction, and the remaining mismatch is isolated to the back-to-back stimulus race.
+**Functional status: PASS for all completed transactions.** The latest run eliminated the earlier `-25 -> 42` race and produced 52 passes with zero failures.
 
-The verification is therefore **not yet complete**. The next testbench revision should first eliminate the stimulus race, then run long enough to complete all 100 randomized tests. Only after zero mismatches are obtained should the project proceed to implementation timing measurement.
+**Completion status: INCOMPLETE.** The run stopped at 1000 ns, so only 39 of the intended 100 randomized tests completed.
 
-## 15. User understanding checkpoint
+The next verification action is therefore not to change the DUT. The testbench stimulus timing is now deterministic. The remaining task is to rerun the same testbench with a simulation window long enough to complete all 100 randomized tests.
 
-The user correctly identified the underlying verification rule: **a synchronous input must be stable before the capture edge; it should not be changed at the same active edge on which the DUT is expected to sample it.**
+A conservative run command is:
 
-This is the key distinction between a deterministic synchronous testbench and a same-edge simulation race. The rule is not merely "do not change it exactly at the edge"; the stronger hardware concept is that the input must satisfy the receiving register's setup requirement before the edge. In behavioral simulation, driving on the falling edge provides a simple deterministic margin and avoids process-order races.
+`run 3000ns`
 
-## 16. Next step
+This provides enough time for the 2000 ns randomized portion plus reset and directed-test overhead. The exact required time can also be derived from the actual number of rising-edge waits in the testbench, but 3000 ns provides margin rather than relying on an exact boundary.
 
-Revise the testbench stimulus/check timing to remove same-edge races, run the complete directed + back-to-back + 100-randomized suite, and inspect the waveform around the first back-to-back transaction. Only after zero mismatches are obtained should the project proceed to an XDC constraint and implementation timing measurement.
+Only after the complete run reports zero mismatches should the project proceed to implementation timing measurement with the 100 MHz XDC constraint.
+
+## 16. User understanding checkpoint
+
+The user correctly identified the key timing relationship: **the accumulator captures an input at edge N, the value propagates through ReLU during cycle N to N+1, and the output register captures the ReLU result at edge N+1.**
+
+The user also correctly identified that changing a synchronous input exactly at the capture edge can create a simulation race. Driving the input on the falling edge removes that ambiguity and provides a deterministic 5 ns stimulus-to-capture interval under the 100 MHz assumption.
+
+## 17. Next step
+
+Run the unchanged updated testbench for at least 3000 ns. Confirm that all 100 randomized transactions complete and that the final summary reports zero failures. Then the project can move from functional verification to implementation timing measurement.
