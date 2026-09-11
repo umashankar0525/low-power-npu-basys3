@@ -120,7 +120,43 @@ Therefore:
 - It does **not** by itself identify the exact ReLU propagation delay.
 - Detailed `report_timing` is required to identify the critical path and its individual data-delay components.
 
-## 11. Conclusion
+## 11. Where to obtain the detailed timing report
+
+In the current Vivado 2018.2 implemented-design view, the left **Flow Navigator** already shows **Implementation → Report Timing Summary**. That is the summary report, not the detailed critical-path report we want.
+
+Two practical ways to generate the detailed report are:
+
+1. **GUI:** use the Vivado **Reports** menu and select the timing report option for the implemented design. The exact menu placement can depend on the active Vivado layout/version.
+2. **Tcl Console (recommended):** run:
+
+`report_timing -setup -max_paths 10`
+
+This reports the worst setup timing paths. For the hold path, run:
+
+`report_timing -hold -max_paths 10`
+
+AMD documents that `report_timing` reports timing paths; `-setup` is equivalent to maximum-delay analysis, `-hold` is equivalent to minimum-delay analysis, and `-max_paths` controls how many paths are reported. citeturn1view0
+
+For our interview-level analysis, the **Tcl report is preferred** because it gives the actual launch point, capture point, clock path, data-path elements, delays, and slack rather than only the summary metrics.
+
+## 12. Next measurement target
+
+The detailed report should let us identify:
+
+`accumulator_reg Q -> ReLU LUTs -> routing -> output_activation D`
+
+and separate:
+
+- logic/LUT delay,
+- routing delay,
+- clock insertion/skew,
+- setup requirement,
+- total data-path delay,
+- final slack.
+
+Do not infer the ReLU physical delay from `10 ns - WNS`. The detailed timing report must provide the actual path quantities.
+
+## 13. Conclusion
 
 Implementation timing is now complete for the ReLU timing wrapper. The design meets the 100 MHz clock constraint with **+6.213 ns WNS**, **0 ns TNS**, **+0.196 ns WHS**, and **0 ns THS**. There are no failing setup or hold endpoints, and Vivado reports that all user-specified timing constraints are met.
 
