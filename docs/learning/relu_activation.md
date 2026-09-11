@@ -21,7 +21,7 @@ In words: positive values pass through unchanged; zero and negative values becom
 
 ## 2. Why ReLU is hardware-friendly
 
-ReLU does not require multiplication, division, or a lookup table. For a signed two's-complement value, the sign is represented by the most-significant bit (MSB). Therefore, the hardware only needs to determine whether the signed input is negative.
+ReLU does not require multiplication, division, or a lookup table. For a signed two's-complement value, the sign is represented by the most-significant bit. Therefore, the hardware only needs to determine whether the signed input is negative.
 
 For a signed 32-bit value `x[31:0]`:
 
@@ -103,20 +103,56 @@ in general.
 
 Under these assumptions, ReLU does not inherently require a separate clock cycle. However, if timing analysis shows the accumulator-to-output path is too long, a registered activation stage could be considered. That is a design decision to be evaluated later, not assumed now.
 
-## 8. Interview-level takeaway
+## 8. Important distinction: combinational delay vs architectural latency
+
+A combinational ReLU has a **propagation delay**, but propagation delay is not the same thing as a clock-cycle latency.
+
+Our timing wrapper contains registers around the combinational ReLU:
+
+`accumulator_input → accumulator_reg → ReLU → output_activation`
+
+At clock edge **N**, `accumulator_reg` captures the completed accumulator value. During the interval from **N to N+1**, the ReLU combinational logic evaluates that registered value. At clock edge **N+1**, `output_activation` captures the ReLU result.
+
+Therefore:
+
+\[
+\boxed{\text{wrapper architectural latency}=1\text{ clock cycle}}
+\]
+
+The setup and hold times are **timing constraints/checks** that determine whether the register-to-register path can operate reliably. They do **not** create the one-cycle latency. Likewise, the ReLU's propagation delay consumes part of the 10 ns timing budget, but it does not by itself add a clock cycle.
+
+At 100 MHz:
+
+\[
+T_{clk}=\frac{1}{100\,MHz}=10\,ns
+\]
+
+The setup condition is conceptually:
+
+\[
+T_{clk\to Q}+T_{ReLU}+T_{routing}+T_{setup}\le10\,ns
+\]
+
+If this inequality is satisfied, the one-cycle register-to-register transfer is safe at 100 MHz. Our measured implementation achieved positive setup and hold slack.
+
+## 9. Interview-level takeaway
 
 A strong hardware explanation is:
 
-> ReLU is a sign-based clamp. For a signed two's-complement accumulator, the MSB identifies a negative value. Negative values are replaced with zero, while non-negative values pass through. Since ReLU is only a comparison and multiplexing operation, it is much cheaper than arithmetic-heavy activation functions. The subsequent INT32-to-INT8 conversion is a separate quantization problem and must have an explicitly defined policy.
+> ReLU is a sign-based clamp. For a signed two's-complement accumulator, the MSB identifies a negative value. Negative values are replaced with zero, while non-negative values pass through. Since ReLU is only a comparison and multiplexing operation, it is much cheaper than arithmetic-heavy activation functions. The subsequent INT32-to-INT8 conversion is a separate quantization problem and must have an explicitly defined policy. In the timing wrapper, the ReLU remains combinational; the observed one-cycle latency comes from the launch and capture registers surrounding it, not from ReLU propagation delay or setup/hold time themselves.
 
-## 9. Checkpoint
+## 10. Current teaching checkpoint
 
-Before proceeding to `/design relu_activation`, the learner must be able to explain:
+The learner correctly identified that the **registers** create the one-cycle architectural latency. However, the latest explanation incorrectly attributed that latency to propagation delay and setup/hold time.
 
-1. The mathematical definition of ReLU.
-2. How the sign bit identifies negative two's-complement values.
-3. Why ReLU should operate after the complete accumulation.
-4. Why ReLU and INT32-to-INT8 conversion are separate operations.
-5. Why blindly truncating a positive INT32 value to 8 bits can produce an incorrect signed result.
+The required distinction is:
 
-**Status:** Teaching complete; learner checkpoint required before design.
+- **Registers** create the one-cycle architectural latency.
+- **ReLU propagation delay** consumes part of the clock period/timing budget.
+- **Setup time** is a requirement checked before the capture edge.
+- **Hold time** is a requirement checked after the capture edge.
+- **Setup/hold checks do not create architectural latency.**
+
+Before proceeding, the learner must restate this distinction in their own words.
+
+**Status:** Teaching checkpoint remains active.
