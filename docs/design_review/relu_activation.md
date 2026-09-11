@@ -100,11 +100,21 @@ A key review distinction is:
 - The timing wrapper has **1-cycle latency** because the accumulator launch register and output capture register form a synchronous pipeline boundary.
 - Propagation delay, setup time, and hold time do not create architectural latency. They determine whether the synchronous path can operate reliably at the target clock frequency.
 
-## 10. Power Assessment
+## 10. Optimization Tradeoff Assessment
+
+Further standalone optimization is **not recommended at this stage**.
+
+The measured setup path is dominated by routing (2.922 ns of 3.750 ns), while the ReLU logic contributes only 0.828 ns. Replacing the current simple logic with a more elaborate Boolean optimization could reduce a small portion of the logic delay while potentially adding logic levels, fanout, buffering, or routing complexity. In that case, the total path delay could stay unchanged or even increase.
+
+This is a general hardware-design tradeoff: optimizing one component of delay does not guarantee improvement in the total critical path. Since the current design already has +6.213 ns setup slack and +0.196 ns hold slack, optimization should be driven by an actual measured bottleneck rather than by LUT-count or Boolean-minimization alone.
+
+At the current stage, preserving simplicity is preferable. The more important future task is to observe how placement and routing behave after integration with the real accumulator and downstream datapath.
+
+## 11. Power Assessment
 
 The module contains only a small amount of combinational logic and no clocked storage internally, so its standalone dynamic power contribution is expected to be small. No direct power measurement has been performed for this module, so a quantitative power claim is not made.
 
-## 11. Integration Assessment
+## 12. Integration Assessment
 
 The module is suitable for integration between the completed accumulator and an INT8 output datapath. The expected system-level sequence is:
 
@@ -112,7 +122,7 @@ The module is suitable for integration between the completed accumulator and an 
 
 The output width and saturation behavior are explicitly defined, which prevents ambiguity at the INT32-to-INT8 boundary.
 
-## 12. Review Findings
+## 13. Review Findings
 
 ### Strengths
 
@@ -133,7 +143,7 @@ The output width and saturation behavior are explicitly defined, which prevents 
 3. Re-check resource utilization and routing after integration; standalone IOB counts are not representative of internal connectivity.
 4. Perform system-level power estimation/measurement once the ReLU block is integrated into the accelerator clock and dataflow.
 
-## 13. Final Verdict
+## 14. Final Verdict
 
 **ACCEPT — ReLU activation block is architecturally sound and timing-closed at 100 MHz in the measured timing wrapper.**
 
