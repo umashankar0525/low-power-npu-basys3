@@ -71,12 +71,26 @@ S_acc = S_a × S_w
 
 ## Checkpoint 3 — Why requantization is needed
 
-The INT32 accumulator and the next INT8 activation do not necessarily use the same scale.
+**Status: NEEDS ONE PRECISION CORRECTION**
 
-The accumulator represents a real value according to:
+The learner correctly recognized that direct saturation of the raw accumulator is insufficient, but described requantization as a way to "get the original number." That is not exact.
+
+The INT32 accumulator and the next INT8 activation can use different scales. The accumulator represents a real value as:
 
 ```text
 y ≈ S_acc × acc
+```
+
+while the output INT8 value must satisfy:
+
+```text
+y ≈ S_out × q_out
+```
+
+Therefore:
+
+```text
+q_out ≈ round((S_acc / S_out) × acc)
 ```
 
 with:
@@ -85,69 +99,37 @@ with:
 S_acc = S_a × S_w
 ```
 
-Suppose the next layer stores its activation using scale `S_out`. Its integer output `q_out` must satisfy:
+Requantization does **not** recover the original FP32 value exactly. Quantization has already introduced rounding and possibly clipping error. Requantization instead converts the accumulator integer from accumulator-scale units into output-scale units so that the new INT8 code represents approximately the same real quantity.
 
-```text
-y ≈ S_out × q_out
-```
-
-Equating the two real-value interpretations:
-
-```text
-S_out × q_out ≈ S_acc × acc
-```
-
-so:
-
-```text
-q_out ≈ (S_acc / S_out) × acc
-```
-
-and therefore:
-
-```text
-q_out ≈ (S_a × S_w / S_out) × acc
-```
-
-The result must then be rounded and clipped into the required INT8 range. For a ReLU output in the current symmetric baseline, negative values become zero and positive values are limited to the representable positive INT8 range.
-
-### Why raw saturation can be wrong
+### Example
 
 Assume:
 
 ```text
 S_acc = 0.001
 acc   = 1000
+S_out = 0.01
 ```
 
-Then the accumulator represents:
+The accumulator represents:
 
 ```text
 y ≈ 0.001 × 1000 = 1.0
 ```
 
-If the output activation scale is:
+The correct output code is:
 
 ```text
-S_out = 0.01
-```
-
-then the correct output integer is approximately:
-
-```text
-q_out = round(1.0 / 0.01)
+q_out = round((0.001 / 0.01) × 1000)
       = 100
 ```
 
-But directly saturating the raw accumulator integer `1000` to signed INT8 would produce `127`.
-
-Those are different because `1000` is expressed in accumulator units, while the output INT8 must be expressed in output-activation units.
-
-Requantization performs this conversion of units before the final INT8 representation is produced.
+Directly saturating raw integer `1000` would instead produce `127`, which changes the represented real value.
 
 ## Current hard gate
 
-Before proceeding to `/design int8_quantization`, the learner must explain in their own words:
+Before proceeding to `/design int8_quantization`, the learner must restate this final distinction:
 
-1. why directly clipping or saturating the raw INT32 accumulator can produce the wrong INT8 output, and
-2. what requantization changes using the ratio `S_acc / S_out`.
+- saturation only limits an integer to the representable range;
+- requantization first converts from accumulator scale `S_acc` to output scale `S_out` using `S_acc / S_out`;
+- requantization preserves the real numerical meaning approximately, but does not reconstruct the exact original FP32 value.
