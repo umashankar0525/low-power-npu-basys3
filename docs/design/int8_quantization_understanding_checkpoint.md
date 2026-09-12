@@ -25,9 +25,9 @@ The learner correctly recognized that activations, weights, and outputs are sepa
 
 ### 2. Why the requantization multiplier is `S_a S_w / S_out`
 
-**Status: PASSED WITH PRECISION NOTE**
+**Status: PASSED**
 
-The learner correctly recognized that multiplication combines the activation and weight scales. More precisely:
+The learner correctly recognized that multiplication combines the activation and weight scales:
 
 ```text
 S_acc = S_a × S_w
@@ -42,23 +42,23 @@ M = S_acc / S_out
 
 ### 3. Why ReLU may be applied before requantization
 
-**Status: NEEDS RESTATEMENT**
+**Status: PASSED**
 
-The key reason is that the requantization multiplier is positive:
+The learner correctly restated that a positive requantization multiplier does not change the sign of the accumulator.
+
+Because:
 
 ```text
 M = S_acc / S_out > 0
 ```
 
-Multiplying by a positive number does not change the sign of the accumulator. Therefore:
+we have:
 
 ```text
 max(0, M × acc) = M × max(0, acc)
 ```
 
-So a negative accumulator would remain negative after positive scaling and would still be removed by ReLU. Applying the sign check first does not change the mathematical result.
-
-This also reduces unnecessary switching because negative values can bypass the multiplier path.
+Therefore the ReLU sign check may be applied before the multiplier without changing the mathematical result. Negative accumulators can also bypass the multiplier path, reducing unnecessary switching.
 
 ### 4. Why saturation must occur after requantization
 
@@ -68,11 +68,9 @@ The learner correctly recognized that direct saturation would clamp the raw accu
 
 ### 5. Why the 3×3 data are packed as `4 + 4 + 1`
 
-**Status: PASSED WITH PRECISION NOTE**
+**Status: PASSED**
 
-The learner correctly connected the schedule to the four available MAC lanes.
-
-The precise reason for zero padding is not that a physically new single MAC would necessarily have to be added. The existing four-MAC datapath could process the ninth product using one lane, but without zero padding it would require a special-case data/control path for the final partial group.
+The learner correctly restated that the ninth product can reuse one lane of the existing four-MAC datapath.
 
 By packing the final word as:
 
@@ -81,11 +79,24 @@ A8, 0, 0, 0
 W8, 0, 0, 0
 ```
 
-only one lane contributes a nonzero product while the same four-lane datapath and reduction tree are reused unchanged. This avoids special-case arithmetic/control hardware and keeps the memory format regular.
+only one lane contributes a nonzero product while the other three lanes produce zero. This allows the same four-lane multiply/reduction datapath and the same regular memory/control structure to be reused, avoiding special-case handling for the last single product.
 
-## Current hard gate
+## Design understanding gate
 
-Before proceeding to `/analyze int8_quantization`, the learner must restate in their own words:
+**STATUS: PASSED**
 
-1. why applying ReLU before the requantization multiplier gives the same mathematical result when the multiplier is positive, and
-2. why zero padding the last BRAM word avoids special-case control/datapath handling rather than necessarily avoiding the addition of a separate physical MAC unit.
+The learner has successfully restated the required architectural decisions. `/design int8_quantization` is complete.
+
+The next mandatory workflow stage is:
+
+```text
+/analyze int8_quantization
+```
+
+That stage must predict, before implementation:
+
+- fixed-point requantization multiplier precision and approximation error,
+- product and intermediate widths,
+- possible DSP/LUT implementation cost,
+- combinational timing risk relative to the 10 ns clock period,
+- whether the current zero-extra-cycle capture structure is a reasonable prediction or a pipeline stage is likely to be required.
