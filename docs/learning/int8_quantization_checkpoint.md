@@ -5,6 +5,13 @@
 **Module:** INT8 Quantization  
 **Workflow stage:** TEACH / UNDERSTANDING CHECK
 
+## Assumptions
+
+- Activations use one symmetric per-tensor scale `S_a`.
+- Weights use one symmetric per-tensor scale `S_w`.
+- The 3x3 convolution sums nine INT8×INT8 products into an INT32 accumulator.
+- The next INT8 activation may use a different scale `S_out`.
+
 ## Checkpoint 1 — Scale meaning
 
 **Status: PASSED**
@@ -17,34 +24,28 @@ For symmetric quantization:
 x ≈ S × q
 ```
 
-where `x` is the real / FP32 value, `q` is the quantized integer value, and `S` is the scale.
-
-Example:
-
-```text
-q = 64, S = 0.01  ->  x ≈ 0.64
-q = 64, S = 0.005 ->  x ≈ 0.32
-```
-
 Therefore the numerical meaning is carried by the pair `(q, S)`, not by the INT8 code alone.
 
 ## Checkpoint 2 — Product and accumulator scale
 
-Consider a quantized activation and weight:
+**Status: PASSED**
+
+The learner correctly restated that both the activation and weight already carry scale factors, so their multiplication also multiplies the scale factors.
+
+Starting from:
 
 ```text
 x ≈ S_a × q_a
 w ≈ S_w × q_w
 ```
 
-Multiplying them gives:
+we obtain:
 
 ```text
-xw ≈ (S_a × q_a)(S_w × q_w)
-   ≈ (S_a × S_w)(q_a × q_w)
+xw ≈ (S_a × S_w)(q_a × q_w)
 ```
 
-Therefore the integer product `q_a × q_w` represents a real quantity with scale:
+so:
 
 ```text
 S_product = S_a × S_w
@@ -53,67 +54,100 @@ S_product = S_a × S_w
 For the 3x3 convolution:
 
 ```text
-acc = Σ(q_ai × q_wi),  i = 0...8
+acc = Σ(q_ai × q_wi)
 ```
 
-If the same activation scale `S_a` and weight scale `S_w` apply to all nine terms, then:
+and, under the stated per-tensor-scale assumption:
 
 ```text
-y ≈ Σ[(S_a × q_ai)(S_w × q_wi)]
-  ≈ (S_a × S_w) Σ(q_ai × q_wi)
-  ≈ (S_a × S_w) acc
+y ≈ (S_a × S_w) acc
 ```
 
-Hence:
+therefore:
 
 ```text
 S_acc = S_a × S_w
 ```
 
-### Numerical example
+## Checkpoint 3 — Why requantization is needed
 
-Assume:
+The INT32 accumulator and the next INT8 activation do not necessarily use the same scale.
+
+The accumulator represents a real value according to:
 
 ```text
-S_a = 0.02
-S_w = 0.05
-q_a = 10
-q_w = 4
+y ≈ S_acc × acc
 ```
 
-Then the represented real activation and weight are:
+with:
 
 ```text
-x ≈ 0.02 × 10 = 0.20
-w ≈ 0.05 × 4  = 0.20
+S_acc = S_a × S_w
 ```
 
-Their real product is:
+Suppose the next layer stores its activation using scale `S_out`. Its integer output `q_out` must satisfy:
 
 ```text
-xw ≈ 0.20 × 0.20 = 0.04
+y ≈ S_out × q_out
 ```
 
-The hardware integer product is:
+Equating the two real-value interpretations:
 
 ```text
-q_a × q_w = 10 × 4 = 40
-```
-
-and its scale is:
-
-```text
-S_a × S_w = 0.02 × 0.05 = 0.001
+S_out × q_out ≈ S_acc × acc
 ```
 
 so:
 
 ```text
-40 × 0.001 = 0.04
+q_out ≈ (S_acc / S_out) × acc
 ```
 
-The integer multiplier therefore produces the integer `40`; the scale product `0.001` tells us what that integer means in the real-value domain.
+and therefore:
+
+```text
+q_out ≈ (S_a × S_w / S_out) × acc
+```
+
+The result must then be rounded and clipped into the required INT8 range. For a ReLU output in the current symmetric baseline, negative values become zero and positive values are limited to the representable positive INT8 range.
+
+### Why raw saturation can be wrong
+
+Assume:
+
+```text
+S_acc = 0.001
+acc   = 1000
+```
+
+Then the accumulator represents:
+
+```text
+y ≈ 0.001 × 1000 = 1.0
+```
+
+If the output activation scale is:
+
+```text
+S_out = 0.01
+```
+
+then the correct output integer is approximately:
+
+```text
+q_out = round(1.0 / 0.01)
+      = 100
+```
+
+But directly saturating the raw accumulator integer `1000` to signed INT8 would produce `127`.
+
+Those are different because `1000` is expressed in accumulator units, while the output INT8 must be expressed in output-activation units.
+
+Requantization performs this conversion of units before the final INT8 representation is produced.
 
 ## Current hard gate
 
-Before proceeding to requantization, the learner must explain in their own words why multiplying an activation with scale `S_a` by a weight with scale `S_w` causes the product and INT32 accumulator to have scale `S_a × S_w`.
+Before proceeding to `/design int8_quantization`, the learner must explain in their own words:
+
+1. why directly clipping or saturating the raw INT32 accumulator can produce the wrong INT8 output, and
+2. what requantization changes using the ratio `S_acc / S_out`.
