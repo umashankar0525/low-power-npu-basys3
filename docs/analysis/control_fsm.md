@@ -1,17 +1,17 @@
-# Control FSM — Performance Analysis and Prediction
+# Control FSM — Performance Analysis, Prediction, and Measurement
 
 **Project:** Low-Power INT8 NPU on Basys 3  
 **Role:** Performance Analyst  
 **Active Phase:** Phase 1 — Arithmetic Foundations and MAC Design  
 **Module:** Control FSM  
-**Workflow stage:** ANALYZE / PREDICT  
-**Status:** Prediction finalized before RTL verification.
+**Workflow stage:** ANALYZE / PREDICT / MEASURED UPDATE  
+**Status:** XSim functional measurement compared against prediction; post-synthesis resource/timing measurement still pending.
 
 ## 1. Scope
 
-This analysis derives the expected state width, control latency, whole-transaction latency, throughput implications, and control-resource cost for the finalized five-state supervisory FSM.
+This document derives the expected state width, control latency, whole-transaction latency, throughput implications, and control-resource cost for the finalized five-state supervisory FSM, then compares those predictions with the completed Vivado XSim unit-level measurement.
 
-The FSM does not reimplement BRAM addressing or MAC sequencing. It treats `memory_interface_dataflow` as a self-contained convolution engine with a `start`/`done` transaction interface.
+The supervisory FSM does not reimplement BRAM addressing or MAC sequencing. It treats `memory_interface_dataflow` as a self-contained convolution engine with a `start`/`done` transaction interface.
 
 ## 2. Assumptions
 
@@ -32,10 +32,11 @@ The FSM does not reimplement BRAM addressing or MAC sequencing. It treats `memor
 - `relu_activation` is combinational and contributes zero architectural clock cycles.
 - The final INT8 activation is captured in a register when `capture_activation = 1`.
 - Separate synchronous sequential blocks observe newly registered values on the following active edge because nonblocking assignments update after right-hand-side evaluation at the current edge.
+- The XSim unit test models the convolution engine by driving `engine_done`; it does not instantiate the full BRAM/MAC engine.
 
 ## 3. Minimum State-Register Width
 
-There are five states.
+There are five supervisory states.
 
 A binary state register with `N` bits represents `2^N` unique encodings.
 
@@ -59,7 +60,7 @@ Therefore:
 
 The logical minimum state storage is **3 flip-flops** using binary encoding.
 
-Vivado may choose a different physical FSM encoding unless constrained, so post-synthesis FF count may differ.
+Vivado may choose a different physical FSM encoding during synthesis unless encoding is constrained, so post-synthesis FF count may differ from the logical minimum.
 
 ## 4. Existing Convolution-Engine Latency
 
@@ -167,7 +168,7 @@ After S8:
 - `busy = 0`,
 - the controller is genuinely ready for another external `start`.
 
-## 6. External Start-to-Done Latency
+## 6. External Start-to-Done Latency Prediction
 
 The elapsed periods from accepted external start to output-valid/done are:
 
@@ -195,7 +196,7 @@ At 100 MHz:
 
 The inner engine itself takes 40 ns.
 
-The full transaction takes 70 ns.
+The full supervisory transaction is predicted to take 70 ns.
 
 Therefore:
 
@@ -209,9 +210,9 @@ Those three periods come from:
 2. **Registered done visibility** — the outer FSM sees the engine's newly registered `engine_done` on the following edge.
 3. **Activation capture** — register the combinational ReLU result before reporting external completion.
 
-These are deliberate synchronous boundaries, not unexplained idle cycles.
+These are deliberate synchronous boundaries rather than unexplained idle cycles.
 
-## 8. Busy Duration After Final Handshake Decision
+## 8. Busy Duration
 
 Final policy:
 
@@ -232,18 +233,18 @@ At 100 MHz:
 
 This is longer than start-to-done latency because `done` is asserted during the one-cycle `DONE` interval while `busy` deliberately remains high.
 
-This cleanly separates two meanings:
+The meanings are therefore separated cleanly:
 
 - `done = 1` means the completed output is valid now.
 - `busy = 0` means a new request may now be issued.
 
-## 9. Back-to-Back Request Timing
+## 9. Back-to-Back Request Timing Prediction
 
 The controller returns to `IDLE` at S8. An external source that obeys the interface sees `busy = 0` during S8 -> S9 and may assert a one-cycle `start` during that interval.
 
 The earliest next accepted start is therefore S9.
 
-So accepted-start to next accepted-start interval is:
+Accepted-start to next accepted-start interval:
 
 `S0 -> S9 = 9 clock periods`
 
@@ -255,9 +256,9 @@ Maximum repeated transaction acceptance rate for this simple non-overlapped hand
 
 `100,000,000 / 9 = 11,111,111.11 transactions/s`
 
-This is only a controller-level bound for repeated single 3x3 transactions. It is not a throughput claim for a future multi-window convolution engine.
+This remains a controller-level bound for repeated single 3x3 transactions. It is not yet a measured throughput result for a complete integrated multi-window NPU.
 
-## 10. Pulse Activity
+## 10. Pulse Activity Prediction
 
 Per successful transaction:
 
@@ -267,7 +268,7 @@ Per successful transaction:
 
 `busy` changes only at transaction entry and final return to idle.
 
-The supervisory control network therefore has low expected toggle activity relative to the arithmetic datapath.
+The supervisory control network is therefore expected to have low toggle activity relative to the arithmetic datapath.
 
 ## 11. Control Resource Prediction
 
@@ -304,17 +305,17 @@ The four Moore outputs are:
 - `busy`,
 - `done`.
 
-A conservative first-order model is therefore:
+A conservative first-order model is:
 
-`3 next-state functions + 4 output decode functions = about 7 LUT6-equivalent functions`
+`3 next-state functions + 4 output-decode functions = about 7 LUT6-equivalent functions`
 
-This is a prediction, not a guaranteed synthesis result. Vivado may share decode logic, change state encoding, or otherwise optimize the structure.
+This is only a pre-synthesis prediction. Vivado may share decode logic, change state encoding, or otherwise optimize the structure.
 
 ## 12. DSP and BRAM Prediction
 
 The supervisory controller performs no multiplication and stores no bulk data.
 
-Predicted direct resource requirement:
+Predicted direct requirement:
 
 - DSP48: **0**
 - BRAM: **0**
@@ -338,9 +339,9 @@ start/engine_done -> decode -> state FF
 
 With only three state bits and two condition inputs, the control logic is shallow. Therefore the FSM is predicted to have comfortable timing margin at 100 MHz and is unlikely to become the system critical path.
 
-Actual timing must still be measured after synthesis/implementation because routing, fanout, and synthesis encoding decisions can change the result.
+This is not yet measured. Post-synthesis or post-implementation timing is still required before making an Fmax claim.
 
-## 14. Final Predicted Timeline
+## 14. Predicted State Timeline
 
 | Edge/interval | Supervisory behavior | Engine behavior |
 |---|---|---|
@@ -357,45 +358,305 @@ Actual timing must still be measured after synthesis/implementation because rout
 | S8 | enter `IDLE`; `busy=0` | idle |
 | S9 | earliest next accepted one-cycle start | new transaction may begin |
 
-## 15. Prediction Summary
+## 15. XSim Measurement Setup
 
-| Metric | Prediction |
-|---|---:|
-| Supervisory states | 5 |
-| Minimum binary state bits | 3 |
-| Minimum logical state FFs | 3 |
-| Direct DSP48 usage | 0 |
-| Direct BRAM usage | 0 |
-| First-order LUT model | about 7 LUT6-equivalent functions |
-| Internal engine start -> engine done | 4 cycles = 40 ns |
-| External start -> done/output valid | 7 cycles = 70 ns |
-| Supervisory overhead | 3 cycles = 30 ns |
-| `engine_start` pulse | 1 cycle |
-| `capture_activation` pulse | 1 cycle |
-| `done` pulse | 1 cycle |
-| Busy-high duration | 8 cycles = 80 ns |
-| Earliest accepted start -> next accepted start | 9 cycles = 90 ns |
-| Max repeated acceptance rate | about 11.11 M transactions/s |
+The Control FSM was simulated in Vivado XSim 2018.2 using `tb/unit/tb_control_fsm.v`.
 
-## 16. Resolved Handshake Issue
+The testbench modeled the engine completion handshake explicitly rather than instantiating the complete convolution datapath. It exercised:
 
-An earlier draft allowed `busy = 0` during `DONE` even though `start` was accepted only in `IDLE`. That could falsely advertise readiness.
+- synchronous reset,
+- prolonged idle behavior,
+- one legal transaction with the real four-cycle engine timing model,
+- `start` during `DONE`,
+- `start` while already busy,
+- variable waiting time before `engine_done`,
+- a legal second transaction after return to idle,
+- synchronous reset during an incomplete transaction,
+- continuous protocol invariants,
+- pulse-count scoreboarding.
 
-The user explicitly agreed to the corrected policy:
+The simulator completed with:
+
+`failures = 0`
+
+and printed the final functional PASS message.
+
+## 16. Measured Signal Sequence
+
+For the first complete transaction, XSim observed the following public-output sequence:
+
+### IDLE
 
 ```text
-busy remains high in DONE
-busy becomes low only after the controller reaches IDLE
+engine_start       = 0
+capture_activation = 0
+busy               = 0
+done               = 0
 ```
 
-The handshake ambiguity is therefore resolved before RTL generation.
+### LAUNCH
 
-## 17. RTL Gate
+```text
+engine_start       = 1
+capture_activation = 0
+busy               = 1
+done               = 0
+```
 
-The user confirmed understanding that:
+The following cycle returned `engine_start` to zero, proving the launch event lasted exactly one clock interval.
 
-1. the 40 ns inner engine becomes 70 ns externally because the supervisory FSM adds three periods,
-2. the outer FSM sees a newly registered `engine_done` on the following clock edge,
-3. `busy` should remain high through `DONE` and become low only in `IDLE`.
+### WAIT_ENGINE
 
-Therefore the analysis/prediction gate is complete and Control-FSM RTL generation is permitted.
+For repeated cycles while `engine_done = 0`:
+
+```text
+engine_start       = 0
+capture_activation = 0
+busy               = 1
+done               = 0
+```
+
+The FSM therefore waited rather than assuming a fixed completion state transition.
+
+### CAPTURE_ACTIVATION
+
+After the modeled engine completion event:
+
+```text
+engine_start       = 0
+capture_activation = 1
+busy               = 1
+done               = 0
+```
+
+This demonstrates that output capture precedes the external completion indication.
+
+### DONE
+
+On the next cycle:
+
+```text
+engine_start       = 0
+capture_activation = 0
+busy               = 1
+done               = 1
+```
+
+This matches the finalized handshake rule that `done` does not imply immediate readiness.
+
+### Return to IDLE
+
+On the following cycle:
+
+```text
+engine_start       = 0
+capture_activation = 0
+busy               = 0
+done               = 0
+```
+
+Only here is a new transaction legal.
+
+## 17. Measured Start-to-Done Latency
+
+The first accepted start occurred at approximately 57 ns in the simulation log, while the corresponding `DONE` state was observed at approximately 127 ns.
+
+Therefore:
+
+`127 ns - 57 ns = 70 ns`
+
+The clock period is 10 ns, so measured latency in cycles is:
+
+`70 ns / 10 ns = 7 cycles`
+
+This exactly matches the first-principles prediction.
+
+The original console used `%0t` and displayed the elapsed interval as `70000` because XSim formatted the time using its 1 ps resolution:
+
+`70000 ps = 70 ns`
+
+The DUT behavior and the actual comparison were correct. The testbench display formatting was later corrected so future runs report the human-readable value as 70 ns.
+
+## 18. Pulse-Count Measurement
+
+At the end of simulation:
+
+| Counter | Measured value |
+|---|---:|
+| `engine_start_count` | 4 |
+| `capture_count` | 3 |
+| `done_count` | 3 |
+| completed `transaction_count` | 3 |
+| `failures` | 0 |
+
+The apparently unequal launch/completion counts are intentional.
+
+Three transactions completed normally, producing:
+
+`3 capture pulses`
+
+and:
+
+`3 done pulses`.
+
+A fourth transaction was launched, so it produced another `engine_start` pulse. The testbench then asserted synchronous reset while that transaction was still in `WAIT_ENGINE` before a valid completion handshake occurred.
+
+Therefore that transaction was abandoned and correctly produced no capture and no done pulse.
+
+The expected count relationship for this stimulus is consequently:
+
+`engine_start_count = 3 completed launches + 1 aborted launch = 4`
+
+while:
+
+`capture_count = done_count = completed transaction count = 3`.
+
+This behavior is evidence that reset correctly terminates the supervisory transaction rather than allowing a stale completion event to leak through.
+
+## 19. Illegal-Request Measurements
+
+Two illegal start timings were tested.
+
+### Start during DONE
+
+Measured result:
+
+`start` was ignored and did not generate another `engine_start`.
+
+This matches the interface contract because `busy = 1` during `DONE`.
+
+### Start while WAIT_ENGINE / busy
+
+Measured result:
+
+`start` was ignored and the current transaction continued normally.
+
+No duplicate launch pulse occurred.
+
+This confirms that only `IDLE` accepts a new request.
+
+## 20. Reset Measurement
+
+Synchronous reset was asserted while the fourth transaction was active in `WAIT_ENGINE`.
+
+After the reset edge, measured outputs were:
+
+```text
+engine_start       = 0
+capture_activation = 0
+busy               = 0
+done               = 0
+```
+
+Thus reset returned the controller directly to safe `IDLE` behavior and abandoned the incomplete transaction.
+
+## 21. Prediction Versus Measurement
+
+| Metric | Prediction | XSim measurement | Result |
+|---|---:|---:|---|
+| Clock period | 10 ns | 10 ns | Match |
+| Supervisory state sequence | IDLE -> LAUNCH -> WAIT -> CAPTURE -> DONE -> IDLE | observed through output behavior | Match |
+| `engine_start` duration | 1 cycle | 1 cycle | Match |
+| Wait while `engine_done=0` | remain in WAIT_ENGINE | observed | Match |
+| `capture_activation` duration | 1 cycle | 1 cycle | Match |
+| Capture before `done` | required | observed | Match |
+| `done` duration | 1 cycle | 1 cycle | Match |
+| `busy` during DONE | 1 | 1 | Match |
+| `busy` in IDLE | 0 | 0 | Match |
+| Start while busy | ignored | ignored | Match |
+| Start during DONE | ignored | ignored | Match |
+| Reset during active transaction | return to IDLE | observed | Match |
+| External accepted start -> DONE | 7 cycles = 70 ns | 7 cycles = 70 ns | Match |
+| Verification failures | 0 expected | 0 | Match |
+
+## 22. What the Measurement Validates
+
+The XSim result validates the unit-level **control protocol** of the supervisory FSM for the exercised scenarios.
+
+Specifically, it demonstrates:
+
+- correct reset-to-idle behavior,
+- exactly one launch event per legal request,
+- indefinite waiting while the engine has not finished,
+- capture occurring before external done,
+- one-cycle capture and done pulses,
+- `busy` remaining high through `DONE`,
+- illegal starts being ignored while busy,
+- legal reuse after return to IDLE,
+- correct abortion of an incomplete transaction by reset,
+- exact agreement with the predicted 70 ns supervisory latency.
+
+The result therefore validates the timing derivation used for this unit-level handshake model.
+
+## 23. What Is Still Unmeasured
+
+The following items remain predictions and must not be presented as measured facts yet:
+
+- actual synthesized state encoding,
+- actual FSM flip-flop count,
+- actual LUT count,
+- actual post-synthesis/post-implementation critical path,
+- actual timing slack at 100 MHz,
+- actual Fmax,
+- integrated Control FSM + `memory_interface_dataflow` + ReLU timing,
+- integrated final INT8 numeric output behavior,
+- physical dynamic-power impact.
+
+The earlier first-order estimate of approximately seven LUT6-equivalent Boolean functions remains a prediction until synthesis reports are collected.
+
+Likewise, DSP48 = 0 and BRAM = 0 are architectural expectations for the controller itself, not yet synthesis measurements for this module.
+
+## 24. Prediction Summary After Measurement
+
+| Metric | Current status |
+|---|---|
+| Supervisory states | 5, design fact |
+| Minimum binary state width | 3 bits, derived fact |
+| Internal engine latency | 40 ns, previously measured |
+| Supervisory external start -> done | predicted 70 ns, now measured 70 ns |
+| Supervisory overhead | derived 30 ns relative to 40 ns engine timing |
+| `engine_start` pulse | predicted 1 cycle, measured 1 cycle |
+| `capture_activation` pulse | predicted 1 cycle, measured 1 cycle |
+| `done` pulse | predicted 1 cycle, measured 1 cycle |
+| `busy` during DONE | predicted high, measured high |
+| Illegal-start behavior | predicted ignored, measured ignored |
+| Reset-abort behavior | predicted safe IDLE, measured safe IDLE |
+| Minimum logical state FFs | predicted/derived 3; physical synthesis count pending |
+| LUT usage | predicted about 7 LUT6-equivalent functions; synthesis pending |
+| DSP48 usage | predicted 0; synthesis pending |
+| BRAM usage | predicted 0; synthesis pending |
+| 100 MHz timing margin | predicted comfortable; implementation measurement pending |
+
+## 25. Interpretation
+
+The most important outcome is not simply the final PASS line. The individual waveform checks demonstrate that the temporal protocol is correct.
+
+For example, the measured order:
+
+`engine_start -> wait -> capture_activation -> done -> idle`
+
+proves that the FSM does not report completion before output capture, and the fact that `busy` remains high during `DONE` proves that the corrected readiness contract is implemented as designed.
+
+The 70 ns measurement is especially valuable because it matches a latency derived before RTL simulation. That prediction-to-measurement agreement shows that the clock-edge reasoning, including the one-cycle visibility delay of the registered `engine_done`, was correct for this architecture.
+
+## 26. Analysis Conclusion
+
+**Control FSM unit-level timing and handshake prediction: VALIDATED by XSim for the exercised scenarios.**
+
+The measured external start-to-done latency is:
+
+`70 ns = 7 clock periods at 100 MHz`.
+
+The measured control-signal ordering, pulse widths, busy policy, illegal-request behavior, repeated-transaction behavior, and reset-abort behavior all match the pre-simulation predictions.
+
+Resource usage and physical timing remain prediction-only until synthesis/implementation measurements are performed.
+
+## 27. Next Workflow Step
+
+The mandatory next step is:
+
+`/review control_fsm`
+
+The design review should evaluate the architecture, RTL, verification evidence, prediction accuracy, known limitations, and whether the module is ready to be treated as a stable building block for later integration.
+
+Before that review begins, the learner must explain why the 4-launch/3-done pulse count is expected under the reset test and what the 70 ns measured latency confirms about the earlier timing derivation.
