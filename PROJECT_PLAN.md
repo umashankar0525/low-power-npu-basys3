@@ -6,9 +6,9 @@ This project is an architecture-first hardware/software co-design of a low-power
 
 ## Current Phase
 
-**Active Phase: Phase 5 — Control FSM and Sequencing**
+**Active Phase: Phase 6 — Quantization and Test-Data Preparation**
 
-The previous handoff entered Phase 5 at the next-module-selection point. Control FSM was selected as the next module, so the current Control FSM work remains in Phase 5.
+Phase 5 completed the Control FSM workflow through teaching, design, prediction, RTL, verification, XSim measurement, review, and self-test. Phase 6 now moves to FP32-to-INT8 quantization and generation of numerically well-defined test data before full-system integration.
 
 ### Reference Parameters
 
