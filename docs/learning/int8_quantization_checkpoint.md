@@ -69,13 +69,14 @@ therefore:
 S_acc = S_a × S_w
 ```
 
-## Checkpoint 3 — Why requantization is needed
+## Checkpoint 3 — Saturation versus requantization
 
-**Status: PARTIAL — FINAL DISTINCTION STILL REQUIRED**
+**Status: PASSED**
 
-The learner now correctly understands why requantization cannot recover the exact original FP32 value: quantization has already introduced rounding and may also have introduced clipping, so information can be lost.
+The learner correctly restated the final distinction:
 
-The remaining distinction is between saturation and requantization.
+- **Saturation** only limits an integer to the allowed INT8 range.
+- **Requantization** converts the accumulator from `S_acc` units to `S_out` units using the scale ratio before rounding and clipping.
 
 The accumulator represents a real value as:
 
@@ -101,59 +102,24 @@ with:
 S_acc = S_a × S_w
 ```
 
-### Saturation
+Requantization does not reconstruct the exact original FP32 value because earlier quantization may already have introduced rounding or clipping error. Its purpose is to preserve the represented real quantity approximately while changing from accumulator-scale units to output-scale units.
 
-Saturation only constrains an integer to the representable INT8 range. For the current post-ReLU signed-INT8 output contract:
+## Teaching gate result
 
-```text
-value < 0    -> 0
-0..127       -> unchanged
-value > 127  -> 127
-```
+**TEACHING GATE: PASSED**
 
-It does not convert between two different numerical scales.
+The learner has demonstrated understanding of:
 
-### Requantization
+1. why the pair `(q, S)` is required to interpret an INT8 value;
+2. why the product and INT32 accumulator scale are `S_a × S_w` under the baseline per-tensor model;
+3. why raw saturation alone is not a complete accumulator-to-output conversion;
+4. how requantization uses `S_acc / S_out` before rounding and clipping;
+5. why requantization is approximate rather than an exact reconstruction of the original FP32 value.
 
-Requantization first converts the accumulator from `S_acc` units into `S_out` units using the ratio:
-
-```text
-S_acc / S_out
-```
-
-and then rounds and clips the resulting integer. Its goal is to make the output INT8 code represent approximately the same real quantity under the output scale.
-
-### Example
-
-Assume:
+The module is now ready to move to the next mandatory workflow step:
 
 ```text
-S_acc = 0.001
-acc   = 1000
-S_out = 0.01
+/design int8_quantization
 ```
 
-Then:
-
-```text
-y ≈ 0.001 × 1000 = 1.0
-```
-
-Requantization gives:
-
-```text
-q_out = round((0.001 / 0.01) × 1000)
-      = 100
-```
-
-and `100 × 0.01 = 1.0` approximately preserves the real numerical meaning.
-
-Direct saturation would instead turn raw integer `1000` into `127`, which would represent `1.27` under `S_out = 0.01` and therefore would not preserve the intended numerical value.
-
-## Current hard gate
-
-Before proceeding to `/design int8_quantization`, the learner must restate in their own words:
-
-- saturation only limits a value to the allowed INT8 range;
-- requantization changes the integer representation from accumulator scale `S_acc` to output scale `S_out` using `S_acc / S_out` before rounding/clipping;
-- requantization is approximate because earlier quantization may already have lost information.
+No Python implementation or RTL modification should be generated until DESIGN and ANALYZE/PREDICT are completed and the learner confirms understanding.
