@@ -4,6 +4,12 @@
 
 This project is an architecture-first hardware/software co-design of a low-power INT8 neural processing accelerator for the Basys 3 / Artix-7 FPGA.
 
+## Current Phase
+
+**Active Phase: Phase 5 — Control FSM and Sequencing**
+
+The previous handoff entered Phase 5 at the next-module-selection point. Control FSM was selected as the next module, so the current Control FSM work remains in Phase 5.
+
 ### Reference Parameters
 
 - Target FPGA: XC7A35T-1CPG236C
