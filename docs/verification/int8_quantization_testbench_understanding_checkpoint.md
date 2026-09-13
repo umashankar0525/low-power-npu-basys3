@@ -22,7 +22,7 @@ The learner correctly stated that `M_INT` and `FRAC_BITS` are compile-time/elabo
 
 ### 2. Why the maximum-width test checks internal arithmetic as well as `q_out`
 
-**Status: NEEDS PRECISION RESTATEMENT**
+**Status: PASSED**
 
 The learner correctly identified the important internal values:
 
@@ -34,10 +34,12 @@ q_pre       = 1
 q_out       = 1
 ```
 
-The remaining key point is why checking only the final `q_out = 1` is insufficient.
+The learner also correctly explained that checking only the final `q_out = 1` is weak because the large right shift compresses a very large internal number into a very small result. A truncation or width error in the 42-bit multiplication path or 43-bit rounding path could be hidden by later arithmetic and still potentially produce the same final output.
 
-The final INT8 value is heavily compressed by the large right shift and saturation logic. A width or truncation error in the 42-bit multiplication path or 43-bit rounding path could potentially be hidden by later operations and still produce the same small final output for some cases. Checking the internal `product`, `rounded_num`, and `q_pre` separately proves that the full-width arithmetic itself is correct and localizes any failure to the exact transformation where it occurs.
+Therefore the testbench must inspect the internal `product`, `rounded_num`, and `q_pre` values in addition to `q_out`. This verifies the full-width arithmetic itself and localizes any failure to the exact stage where it occurs.
 
-## Current hard gate
+## Gate result
 
-Before Step 8 simulation is run, the learner must restate in their own words why checking only `q_out = 1` is weaker than also checking the exact 42-bit product and 43-bit rounded intermediate.
+**STEP 7 TESTBENCH UNDERSTANDING GATE: PASSED**
+
+The learner has demonstrated sufficient understanding of the parameterization strategy and internal-width verification strategy. Step 8 simulation and measurement may proceed.
