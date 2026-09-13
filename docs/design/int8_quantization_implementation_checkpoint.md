@@ -41,7 +41,7 @@ The learner correctly identified Python as the independent software-side referen
 
 ### 3. Why the post-ReLU accumulator magnitude uses 18 unsigned bits
 
-**Status: NEEDS RESTATEMENT**
+**Status: PASSED**
 
 Under the Phase 6 generated-data contract:
 
@@ -63,10 +63,24 @@ Since:
 131072 < 145161 < 262144
 ```
 
-17 unsigned bits are insufficient, while 18 unsigned bits are sufficient. Therefore the positive post-ReLU accumulator magnitude is represented by 18 unsigned bits before multiplying by the 24-bit requantization coefficient.
+17 unsigned bits are insufficient, while 18 unsigned bits are sufficient. The learner correctly restated this relationship.
 
 This 18-bit magnitude assumption is valid only for the bounded 3×3, one-channel, `[-127,+127]` generated-data contract. Arbitrary larger positive INT32 values are outside this baseline module's supported numerical range.
 
-## Current hard gate
+## Gate result
 
-Before proceeding to `/verify int8_quantization`, the learner must explain in their own words why the maximum post-ReLU magnitude `145161` requires 18 unsigned bits.
+**IMPLEMENTATION UNDERSTANDING GATE: PASSED**
+
+The learner has now demonstrated understanding of:
+
+- the 18-bit post-ReLU accumulator magnitude;
+- the 42-bit requantization product width;
+- the need for an independent Python golden/reference model.
+
+The mandatory workflow may now proceed to:
+
+```text
+/verify int8_quantization
+```
+
+No simulation result is claimed at this point.
