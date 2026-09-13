@@ -27,14 +27,28 @@ The learner correctly identified that this case exercises the full arithmetic pa
 
 ### 3. Why the Python reference must be independent
 
-**Status: NEEDS PRECISION RESTATEMENT**
+**Status: PASSED**
 
-The learner recognized that Python is used to verify quantization behavior such as ties-away-from-zero rounding and BRAM packing. The remaining key idea is independence.
+The learner correctly stated that if the Verilog testbench copied the RTL logic, both could contain the same bug and still agree, producing a false PASS.
 
-If the Verilog testbench simply copies the same arithmetic structure or mistake as the RTL, both implementations can agree while both are wrong. The Python model is stronger because it independently implements the numerical specification and generates expected values from that specification rather than from the RTL implementation.
+The Python model is therefore used as an independent expected-value implementation of the mathematical specification. It independently calculates quantization, integer convolution, requantization, rounding, clipping, and BRAM packing behavior rather than copying values or logic from the RTL.
 
-Independent agreement therefore gives stronger evidence that the RTL matches the intended mathematical contract instead of merely matching a duplicate implementation of the same bug.
+This makes agreement between Python and RTL stronger evidence that the hardware matches the intended numerical contract rather than merely matching a duplicated implementation error.
 
-## Current hard gate
+## Verification understanding gate
 
-Before moving to testbench generation, the learner must restate in their own words why an independently implemented Python expected-value model is stronger than copying the RTL equation directly into the Verilog testbench.
+**STATUS: PASSED**
+
+The learner has demonstrated understanding of:
+
+1. why separate directed tests are needed for different arithmetic properties;
+2. why the maximum-width internal test is important even when its final output is small; and
+3. why independent expected-value generation prevents a duplicated RTL bug from causing a false PASS.
+
+The module is ready for the next mandatory workflow step:
+
+```text
+Step 7: Testbench generation
+```
+
+No simulation result is claimed yet. The testbench must be generated from the documented verification plan before XSim is run.
