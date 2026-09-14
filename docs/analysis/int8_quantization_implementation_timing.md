@@ -99,9 +99,19 @@ The implementation timing summary reports:
 7 failing endpoints / 7 total setup endpoints
 ```
 
-This is strongly consistent with every physically implemented output bit of the capture register being reached through the same long requantization datapath.
+The detailed setup-path list confirms the seven endpoints are exactly:
 
-This interpretation should be confirmed by opening the detailed setup path report and checking the seven endpoint names.
+```text
+output_activation_reg[6]/D
+output_activation_reg[2]/D
+output_activation_reg[1]/D
+output_activation_reg[5]/D
+output_activation_reg[4]/D
+output_activation_reg[3]/D
+output_activation_reg[0]/D
+```
+
+Therefore every physically implemented output capture bit fails setup in this baseline implementation.
 
 ## 5. Hold-Timing Interpretation
 
@@ -200,43 +210,72 @@ If the register is aligned with the already existing S5-to-S6 handshake interval
 
 This must be re-derived before RTL modification; it is not yet claimed as implemented behavior.
 
-## 9. Information Still Needed From the Detailed Timing Report
+## 9. Detailed Worst Setup-Path Measurement
 
-The screenshots provide the summary values but do not yet expose the exact worst path.
+The implementation setup-path table identifies `Path 1` as the worst path because it has the most negative slack.
 
-Before changing RTL, record the worst setup path details:
-
-```text
-startpoint register
-endpoint register
-data path delay
-logic delay vs routing delay
-DSP48E1 involvement
-number of logic levels
-clock uncertainty / setup requirement
-```
-
-This will tell us whether the dominant delay is mainly:
+Measured values:
 
 ```text
-DSP multiplier
-DSP-to-fabric transition
-carry-chain rounding/correction
-saturation/reduction logic
-routing
+Path name      : Path 1
+Slack          : -0.405 ns
+Logic levels   : 10
+High fanout    : 18
+From           : accumulator_reg_reg[4]/C
+To             : output_activation_reg[6]/D
+Total delay    : 10.362 ns
+Logic delay    : 6.066 ns
+Net delay      : 4.296 ns
+Requirement    : 10.000 ns
 ```
 
-and therefore where the pipeline boundary should be placed.
+The remaining six failing setup paths have slacks from `-0.372 ns` to `-0.250 ns`, so `Path 1` is the correct worst-path candidate.
 
-## 10. Current Step 9 State
+Delay decomposition:
+
+```text
+logic fraction = 6.066 / 10.362 ≈ 58.5%
+net fraction   = 4.296 / 10.362 ≈ 41.5%
+```
+
+This means the failure is not caused by routing alone. A majority of the measured path delay is logic delay, while routing still contributes a substantial fraction.
+
+The simple difference:
+
+```text
+10.000 - 10.362 = -0.362 ns
+```
+
+does not exactly equal the reported slack `-0.405 ns`. The additional approximately `0.043 ns` comes from timing-analysis effects outside the raw data-path-delay column, such as clock-path/setup/uncertainty terms. Therefore the reported Vivado slack, not `requirement - total delay` alone, is the authoritative timing verdict.
+
+This table is sufficient to identify the worst setup path and quantify its logic-versus-routing split. It is not yet sufficient to identify every primitive on the path or prove exactly where the DSP48E1, carry-chain, and saturation logic appear.
+
+## 10. Detailed Cell-Level Path Information Still Needed
+
+Before modifying the RTL pipeline boundary, open `Path 1` itself in Vivado and record the detailed timing path showing the sequence of cells/nets.
+
+The remaining useful fields are:
+
+```text
+actual launch pin / register Q path
+DSP48E1 cell and pins, if present
+CARRY4/LUT sequence after the DSP
+individual incremental delays
+clock uncertainty/setup contribution
+```
+
+This will tell us whether the best pipeline split should be immediately after the DSP multiply/add, after rounding, or closer to the saturation/output logic.
+
+## 11. Current Step 9 State
 
 ```text
 Functional XSim verification        : COMPLETE / PASS
 Synthesis resource measurement      : COMPLETE
 Post-implementation setup timing    : COMPLETE / FAIL at 100 MHz
 Post-implementation hold timing     : COMPLETE / PASS
-Detailed critical-path inspection   : PENDING
+Worst setup-path summary inspection : COMPLETE
+Detailed cell-level path inspection : PENDING
 Timing-closure RTL refinement       : NOT YET PERFORMED
 ```
 
-Step 9 has now confirmed both the resource mapping and the timing limitation of the current baseline. The next action is to inspect the exact worst setup path, then re-derive the one-stage timing split before modifying RTL.
+Step 9 has now confirmed both the resource mapping and the timing limitation of the current baseline. The next action is to inspect the cell-level detail of `Path 1`, then re-derive the one-stage timing split before modifying RTL.
