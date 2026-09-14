@@ -28,6 +28,13 @@ The learner correctly stated that a meaningful 100 MHz timing check requires a r
 
 A standalone combinational block can be synthesized for area estimation, but by itself it does not represent the actual engine-result-register to activation-capture-register timing path that matters architecturally.
 
+## Final learner restatement
+
+The learner explicitly confirmed both required ideas:
+
+1. A `0 DSP` result from the trivial default parameter configuration would only show that Vivado optimized that special case; it would not invalidate the nontrivial 1–2 DSP prediction.
+2. Only a registered source-to-destination context creates the meaningful setup path whose WNS can be compared with the 10 ns requirement.
+
 ## Gate result
 
 **STEP 9 UNDERSTANDING GATE: PASSED**
