@@ -195,3 +195,11 @@ It does not by itself prove:
 - the current coefficient is the final network coefficient.
 
 Its purpose is to test the earlier resource and timing predictions with a meaningful nontrivial configuration before final integration.
+
+## 11. Constraint-File Handling Clarification
+
+Do **not** delete `vivado/constraints/relu_timing_wrapper.xdc` from the repository. That file belongs to the earlier standalone ReLU timing characterization and should be preserved as project evidence.
+
+For the current `requantize_timing_wrapper` measurement, only `requantize_timing_wrapper.xdc` should be active for synthesis/implementation timing. The older ReLU timing XDC may remain in the Vivado project, but it should be disabled for this run, or removed from the current project file set without deleting the repository file.
+
+The reason is that both timing-wrapper XDC files create a clock on a top-level port named `clk`. Activating both during the same run can create duplicate or conflicting clock constraints and make timing interpretation ambiguous.
