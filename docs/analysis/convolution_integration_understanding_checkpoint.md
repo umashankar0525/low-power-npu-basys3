@@ -41,32 +41,33 @@ The three unused slots are the zero-padded lanes in the final packed word.
 
 ### 5. Why 127 logical registered bits does not mean 127 Slice FFs
 
-**Status: PARTIAL**
+**Status: PASSED**
 
-The learner correctly noted that the 42-bit requantizer product register is expected to map into the DSP48E1 `PREG` rather than into 42 Slice flip-flops.
-
-The complete reason is broader: the 127-bit number is an RTL-visible logical storage count, while physical implementation is decided by synthesis. Registers may be absorbed into dedicated FPGA resources such as DSP registers, constant bits may be optimized away, and other redundant logic may be removed or encoded differently. Therefore logical register bits and final Slice-FF count are not identical quantities.
+The learner correctly restated that 127 logical register bits are an RTL-visible storage count, not a physical Slice-FF count. Synthesis may place registers in dedicated FPGA resources, optimize constant bits away, or remove redundant state. In particular, the 42-bit requantizer `product_reg` is expected to map into the DSP48E1 `PREG` rather than consume 42 Slice FFs.
 
 ### 6. Why 5 logical multipliers can still correspond to only 1 expected DSP48E1
 
-**Status: PARTIAL**
+**Status: PARTIAL — ONE DISTINCTION STILL MISSING**
 
-The learner correctly identified that the requantizer multiplier uses a DSP48E1 in the representative Phase-6 implementation.
+The learner correctly stated that the single 18x24 requantization multiplier is expected to map to one DSP48E1 and that there are five logical multipliers total.
 
-The missing distinction is that the other four logical multipliers are the small signed INT8 x INT8 multipliers inside the convolution engine. Existing project synthesis evidence indicates those four map to LUT/carry fabric under the current RTL/tool configuration. Thus:
+The missing statement is what happens to the other four logical multipliers:
 
 ```text
-4 logical INT8 multipliers -> expected LUT/carry implementation
-1 logical 18x24 requantization multiplier -> expected DSP48E1
+4 signed INT8 x INT8 convolution multipliers
+    -> expected LUT/carry implementation
+
+1 unsigned 18x24 requantization multiplier
+    -> expected DSP48E1 implementation
 
 5 logical multipliers total
 1 expected DSP48E1 total
 ```
 
-This remains a prediction until integrated synthesis confirms the mapping.
+This mapping remains a prediction until integrated synthesis confirms it.
 
 ## Gate result
 
 **PREDICTION-ANALYSIS UNDERSTANDING GATE: NOT YET PASSED**
 
-Points 1-4 are passed. The learner must restate points 5 and 6 precisely before Phase-7 RTL generation is permitted.
+Points 1-5 are passed. Only point 6 remains: the learner must explicitly state that the other four INT8 convolution multipliers are expected to map into LUT/carry fabric, leaving only the requantization multiplier in a DSP48E1.
