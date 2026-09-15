@@ -28,21 +28,33 @@ This baseline also allows any timing violation in the core to be identified and 
 
 ### Why repeat synthesis/implementation after `basys3_top_level`
 
-**Status: NOT YET PASSED**
+**Status: PASSED**
 
-The learner did not yet state the second reason explicitly. The complete board top adds infrastructure such as memories, synchronizers/debouncers, one-pulse generation, status/LED logic, and additional routing/fanout. Those additions can change both resource usage and timing.
+The learner correctly stated that the complete board top adds memories, input-conditioning logic, pulse-generation logic, status/LED logic, and additional routing/fanout. These additions can change both resource usage and timing paths.
 
-The second physical run is therefore needed to measure the final board-level design and compare it against the core-only baseline:
+Therefore the final board-level design must be synthesized and implemented again so that we can:
+
+```text
+measure final LUT/FF/CARRY/DSP/BRAM usage
+measure final WNS/TNS/WHS/THS
+check whether 100 MHz still closes
+identify any new critical path
+compare final board-top cost against the core-only baseline
+```
+
+Conceptually:
 
 ```text
 board-wrapper resource overhead
 = final board-top resources - core-only resources
 ```
 
-and to determine whether the added infrastructure changes the critical path or 100 MHz timing closure.
+and timing must also be re-evaluated because the added hierarchy, placement, routing, fanout, and memory resources can alter physical path delays.
 
 ## Gate result
 
-**BASELINE-MEASUREMENT CONCEPT: PARTIAL**
+**BASELINE-MEASUREMENT CONCEPT: PASSED**
 
-The core-only measurement purpose is understood. The learner must still restate why the full board top must be synthesized and implemented again after Phase-8 integration.
+The learner now understands both why `convolution_integration` is physically characterized first and why synthesis/implementation must be repeated after `basys3_top_level` is built.
+
+The next permitted activity is Phase-8 baseline physical characterization of `convolution_integration` before proceeding deeper into board-top design.
