@@ -21,15 +21,11 @@ The learner correctly identified that the behavioral XSim run recorded the accep
 
 Therefore the previously predicted 7-cycle start-to-done latency has now been directly observed in behavioral simulation for the exercised integration test.
 
-### 2. Why LUT/FF/DSP usage and timing closure cannot yet be called measured
+### 2. Why LUT/FF/DSP usage and timing closure require different physical evidence
 
-**Status: PARTIAL**
+**Status: PASSED**
 
-The learner correctly stated that physical resource usage requires synthesis results. Behavioral XSim does not technology-map the RTL, so it cannot measure final LUT, Slice-FF, or DSP48E1 utilization.
-
-One additional distinction is still required for timing closure: synthesis alone is not enough to prove final routed timing. Setup/hold closure, WNS/TNS, and routing-delay evidence require implementation (placement and routing) followed by static timing analysis for the integrated `convolution_integration` design.
-
-Therefore the measurement boundaries are:
+The learner correctly distinguished the measurement stages:
 
 ```text
 Behavioral XSim
@@ -37,13 +33,27 @@ Behavioral XSim
 
 Synthesis
     -> technology mapping and resource-utilization evidence
+       such as LUT, Slice-FF, and DSP48E1 usage
 
 Implementation + static timing analysis
-    -> routed setup/hold timing, WNS/TNS, and timing-closure evidence
+    -> placed/routed setup and hold timing evidence
+       including WNS/TNS and timing-closure status
 ```
+
+The learner explicitly stated that resource usage requires synthesis results, while timing closure requires implementation results. This is the required distinction: synthesis can report mapped resources, but final routed timing closure cannot be established from behavioral simulation or resource reports alone.
 
 ## Gate result
 
-**STEP-8 UNDERSTANDING GATE: NOT YET PASSED**
+**STEP-8 UNDERSTANDING GATE: PASSED**
 
-The latency-measurement concept is passed, and the learner understands that resource usage requires synthesis. The remaining point is to explicitly distinguish synthesis/resource measurement from implementation/static-timing evidence required to prove timing closure.
+The learner has correctly distinguished behavioral timing measurement, synthesis resource measurement, and implementation/static-timing evidence.
+
+Step 8 is therefore complete, including its understanding gate.
+
+The next mandatory workflow step is:
+
+```text
+Step 9: update docs/analysis/convolution_integration.md with measured-versus-predicted results
+```
+
+That step belongs to the Performance Analyst role and should be performed in a separate interaction/response so project roles are not mixed.
