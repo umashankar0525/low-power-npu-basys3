@@ -47,11 +47,9 @@ The learner correctly restated that 127 logical register bits are an RTL-visible
 
 ### 6. Why 5 logical multipliers can still correspond to only 1 expected DSP48E1
 
-**Status: PARTIAL — ONE DISTINCTION STILL MISSING**
+**Status: PASSED**
 
-The learner correctly stated that the single 18x24 requantization multiplier is expected to map to one DSP48E1 and that there are five logical multipliers total.
-
-The missing statement is what happens to the other four logical multipliers:
+The learner explicitly distinguished the two multiplier classes:
 
 ```text
 4 signed INT8 x INT8 convolution multipliers
@@ -64,10 +62,18 @@ The missing statement is what happens to the other four logical multipliers:
 1 expected DSP48E1 total
 ```
 
-This mapping remains a prediction until integrated synthesis confirms it.
+The learner also understands that this remains a prediction until integrated synthesis confirms the actual mapping.
 
 ## Gate result
 
-**PREDICTION-ANALYSIS UNDERSTANDING GATE: NOT YET PASSED**
+**PREDICTION-ANALYSIS UNDERSTANDING GATE: PASSED**
 
-Points 1-5 are passed. Only point 6 remains: the learner must explicitly state that the other four INT8 convolution multipliers are expected to map into LUT/carry fabric, leaving only the requantization multiplier in a DSP48E1.
+All six analysis concepts have been restated correctly. The mandatory pre-RTL concept, design, prediction, and understanding gates are complete.
+
+The next workflow step is:
+
+```text
+Step 5: RTL generation -> rtl/top/convolution_integration.v
+```
+
+RTL generation is now permitted, but integrated simulation must still wait until the later verification/testbench steps in the project workflow.
