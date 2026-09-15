@@ -12,24 +12,37 @@
 - The rising edge is the architectural event that captures the new product into `product_reg`.
 - The `#1` delay is only a simulation settle delay after that edge.
 
-## Learner response
+## Learner checkpoint
 
-The learner correctly identified that the downstream combinational logic must be allowed to settle before checking, especially because the register update uses nonblocking assignment semantics.
+### 1. Why the rising edge is required
 
-However, the response did not yet explicitly state that the **rising clock edge is required to capture the new product**. Without that active edge, changing `acc_in` and waiting `#1` leaves `product_reg` holding the previous sample, so the downstream output still corresponds to the previous registered product.
+**Status: PASSED**
 
-## Current status
+The learner correctly restated that the rising clock edge is what actually captures the new multiplication result into `product_reg`. Without that active edge, waiting `#1` does not transfer the new input sample through the pipeline register; `product_reg` continues to hold the previous product.
+
+### 2. Why `#1` is used after the edge
+
+**Status: PASSED**
+
+The learner previously established that the post-edge delay gives the nonblocking register update and the downstream combinational rounding, shifting, saturation, and output logic time to settle before the testbench samples them.
+
+The complete sequence is therefore:
 
 ```text
-Why a post-edge settle delay is needed : PASSED
-Why the rising edge itself is required : NEEDS RESTATEMENT
+before rising edge:
+    acc_in is stable
+
+at rising edge:
+    product_reg captures the corresponding product
+
+after rising edge:
+    nonblocking update takes effect
+    Stage-2 combinational logic responds
+    #1 gives the testbench a safe settle interval before checking
 ```
 
-## Gate
+## Gate result
 
-**POST-EDGE SAMPLING UNDERSTANDING GATE: NOT YET PASSED**
+**POST-EDGE SAMPLING UNDERSTANDING GATE: PASSED**
 
-Before proceeding to refined synthesis/resource measurement, the learner must restate both points:
-
-1. the rising edge captures the new product into `product_reg`; and
-2. `#1` is only used afterward to let the nonblocking register update and downstream combinational logic settle before checking.
+The refined pipelined requantizer has completed its behavioral-verification understanding requirements. The project may now proceed to refined synthesis/resource measurement and then post-route timing measurement.
