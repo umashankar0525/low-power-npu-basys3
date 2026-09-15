@@ -15,27 +15,27 @@ The learner correctly identified that both producer and consumer are clocked blo
 
 ### 2. Why product capture and activation capture occur on different edges
 
-**Status: PARTIAL — NEEDS PRECISE RESTATEMENT**
+**Status: PASSED**
 
-The learner said this is needed "for the computation and to keep the output stable." That is directionally reasonable but does not yet show the required cycle-level understanding.
+The learner correctly explained that after the final INT32 result is sampled into the requantizer's `product_reg`, the rounding, right-shift, and saturation logic still has to compute the corresponding INT8 `q_out` during the following clock period.
 
-The precise reason is:
+The required sequence is therefore:
 
 ```text
 edge N:
     engine registers final INT32 result
 
 edge N+1:
-    requantizer sees that result and captures the 42-bit fixed-point product into product_reg
+    requantizer sees that result and captures the fixed-point product into product_reg
 
 between N+1 and N+2:
-    rounding, shift, and saturation combinational logic produce the correct q_out from product_reg
+    rounding + shift + saturation combinational logic produce valid q_out
 
 edge N+2:
-    architectural activation register captures that valid q_out
+    architectural activation register captures q_out
 ```
 
-The separate edges are required by the explicit pipeline register inside the requantizer.
+The activation register must therefore wait until the edge after the product-register capture; otherwise it could capture the previous transaction's or previous pipeline stage's value.
 
 ### 3. Why 70 ns is still a prediction
 
@@ -51,6 +51,14 @@ The learner correctly identified that a design can produce the right final INT8 
 
 ## Gate result
 
-**TEACHING UNDERSTANDING GATE: NOT YET PASSED**
+**TEACHING UNDERSTANDING GATE: PASSED**
 
-The only missing point is the exact two-edge requantizer pipeline sequence. The learner must restate why the final INT32 result is sampled into `product_reg` on one edge and why the activation register can only capture the corresponding `q_out` on the following edge.
+The learner now demonstrates the required cycle-level understanding for Phase-7 convolution integration. Step 1 `/teach convolution_integration` is complete.
+
+The next workflow step is:
+
+```text
+Step 2: /design convolution_integration
+```
+
+No Phase-7 integration RTL should be generated until the design document, prediction analysis, and subsequent understanding gate are completed.
