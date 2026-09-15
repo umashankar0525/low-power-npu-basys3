@@ -9,17 +9,20 @@
 
 ### 1. Why activation and weight memories stay outside the integration core
 
-**Status: PARTIAL**
+**Status: PASSED**
 
-The learner said the memories are stored in BRAM and that the wrapper only simulates memory. The important architectural point is broader: the integration core exposes the memory interface so verification can use a cycle-accurate one-clock-latency memory model, while a later board/platform wrapper can connect the same interface to inferred or explicit BRAM. This keeps physical storage implementation separate from the convolution core and preserves verification flexibility.
+The learner correctly restated that the core should remain independent of the physical memory implementation. During simulation, the exposed memory interface can connect to a cycle-accurate one-clock-latency memory model; later, the same interface can connect to inferred or explicit FPGA BRAM. This preserves verification flexibility and avoids binding the convolution core to one storage implementation.
 
 ### 2. Why an architectural `activation_out` register is still required
 
-**Status: NOT YET PASSED**
+**Status: PASSED**
 
-The learner said it is needed because the value is captured and requantized before `product_reg`. This is not the correct reason.
+The learner correctly distinguished the two registers:
 
-`product_reg` is an **internal requantizer pipeline register**. It stores the 42-bit fixed-point product and changes as the internal pipeline runs. The architectural `activation_out` register is required so that the external transaction result changes only when `capture_activation` is asserted. This gives the system the clean contract:
+- `product_reg` is an internal 42-bit pipeline register inside the requantizer.
+- `activation_out` is the architectural transaction-result register visible to the outside of the integration core.
+
+The architectural contract is therefore:
 
 ```text
 done = 1  =>  activation_out already contains the completed transaction result
@@ -27,9 +30,9 @@ done = 1  =>  activation_out already contains the completed transaction result
 
 ### 3. Why the existing `CAPTURE_ACTIVATION` state avoids another FSM state
 
-**Status: PARTIAL**
+**Status: PASSED**
 
-The learner correctly associated `done = 1` with valid output, but the exact reason is the existing cycle slot:
+The learner correctly restated that `CAPTURE_ACTIVATION` already provides the E6->E7 clock interval required for stage-2 requantization:
 
 ```text
 E6:
@@ -44,28 +47,34 @@ E7:
     controller enters DONE
 ```
 
-Because `CAPTURE_ACTIVATION` already provides the full E6->E7 interval needed for the second requantizer stage, a separate `WAIT_REQUANT` state is unnecessary for the current pipeline depth.
+Because this interval already exists in the current controller schedule, a separate `WAIT_REQUANT` state would be unnecessary for the present one-register requantizer pipeline.
 
 ### 4. What is registered at E5, E6, and E7
 
-**Status: PASSED WITH ONE PRECISION NOTE**
+**Status: PASSED**
 
 The learner correctly identified:
 
 ```text
 E5 -> final signed INT32 convolution result is registered by the engine
-E6 -> 42-bit fixed-point product is registered in requantizer product_reg
-E7 -> architectural activation_out register captures the valid INT8 q_out
-```
+      engine_done is also registered high for one cycle
 
-At E5 the engine also registers its one-cycle `engine_done` pulse; at E7 the controller enters `DONE`, causing external `done` to be asserted for the following state interval.
+E6 -> 42-bit fixed-point product is registered in requantizer product_reg
+
+E7 -> architectural activation_out register captures the valid INT8 q_out
+      controller enters DONE, making external done active
+```
 
 ## Gate result
 
-**DESIGN UNDERSTANDING GATE: NOT YET PASSED**
+**DESIGN UNDERSTANDING GATE: PASSED**
 
-The learner must restate three design decisions precisely:
+Step 2 `/design convolution_integration` is complete.
 
-1. Why the memory interface is kept outside the integration core rather than permanently binding the core to one BRAM implementation.
-2. Why `activation_out` is needed even though `product_reg` already exists.
-3. Why the E6->E7 `CAPTURE_ACTIVATION` interval means no additional FSM state is currently required.
+The next workflow step is:
+
+```text
+Step 3: /analyze convolution_integration
+```
+
+No Phase-7 integration RTL should be generated until the prediction analysis is completed and its understanding gate is passed.
