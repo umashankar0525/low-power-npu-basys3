@@ -23,27 +23,27 @@ Therefore the previously predicted 7-cycle start-to-done latency has now been di
 
 ### 2. Why LUT/FF/DSP usage and timing closure cannot yet be called measured
 
-**Status: NOT YET PASSED**
+**Status: PARTIAL**
 
-Behavioral XSim verifies logical and cycle-level behavior, but it does not perform synthesis, technology mapping, placement, routing, or static timing analysis for the integrated `convolution_integration` design.
+The learner correctly stated that physical resource usage requires synthesis results. Behavioral XSim does not technology-map the RTL, so it cannot measure final LUT, Slice-FF, or DSP48E1 utilization.
 
-Therefore the following still require integrated synthesis/implementation reports:
+One additional distinction is still required for timing closure: synthesis alone is not enough to prove final routed timing. Setup/hold closure, WNS/TNS, and routing-delay evidence require implementation (placement and routing) followed by static timing analysis for the integrated `convolution_integration` design.
+
+Therefore the measurement boundaries are:
 
 ```text
-LUT usage
-Slice FF usage
-DSP48E1 usage/mapping
-post-synthesis or post-route setup timing
-hold timing
-WNS/TNS
-routing delay
-power
-```
+Behavioral XSim
+    -> functional correctness and cycle/timestamp measurements
 
-The integration testbench passing does not establish those physical implementation quantities.
+Synthesis
+    -> technology mapping and resource-utilization evidence
+
+Implementation + static timing analysis
+    -> routed setup/hold timing, WNS/TNS, and timing-closure evidence
+```
 
 ## Gate result
 
 **STEP-8 UNDERSTANDING GATE: NOT YET PASSED**
 
-The latency-measurement concept is passed. The learner must still restate why behavioral simulation cannot measure physical resource utilization or prove timing closure before the workflow proceeds to Step 9 measured-versus-predicted analysis.
+The latency-measurement concept is passed, and the learner understands that resource usage requires synthesis. The remaining point is to explicitly distinguish synthesis/resource measurement from implementation/static-timing evidence required to prove timing closure.
