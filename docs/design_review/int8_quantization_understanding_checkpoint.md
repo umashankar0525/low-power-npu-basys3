@@ -8,7 +8,7 @@
 ## Assumptions
 
 - Hardware-side RTL, behavioral verification, synthesis mapping, and 100 MHz routed timing have passed for the representative configuration.
-- The overall module review remains blocked by the missing Python-side verification artifact and execution evidence.
+- The overall module review remains blocked only by the missing Python-side verification artifact and execution evidence.
 
 ## Learner checkpoint
 
@@ -20,19 +20,14 @@ The learner correctly explained that the software/Python side has not yet comple
 
 ### 2. Which Python-side behaviors still require independent verification
 
-**Status: PARTIAL — NEEDS COMPLETE RESTATEMENT**
+**Status: PASSED**
 
-The learner correctly named:
+The learner correctly restated the complete required software-side verification scope:
 
 ```text
 maximum 3x3 integer convolution
-requantization / reference behavior
-requantization parameter generation
-```
-
-The remaining required behaviors from the verification plan are:
-
-```text
+requantization behavior
+requantization-parameter generation
 symmetric scale derivation
 all-zero tensor scale handling
 round-to-nearest ties away from zero
@@ -41,10 +36,12 @@ BRAM packing / byte order / two's-complement storage
 representative requantize_relu() reference outputs
 ```
 
-The complete Python verification set should therefore cover both quantization/data-generation behavior and the integer reference arithmetic.
+This covers both quantization/data-generation behavior and the independent integer reference arithmetic required by the verification plan.
 
 ## Gate result
 
-**DESIGN-REVIEW UNDERSTANDING GATE: NOT YET PASSED**
+**DESIGN-REVIEW UNDERSTANDING GATE: PASSED**
 
-Before corrective Python verification begins, the learner must restate the complete software-side verification scope in their own words.
+The learner understands why the hardware-side evidence is insufficient by itself to close the full Phase-6 module and can identify the complete Python verification scope.
+
+The next corrective action is to return to Verification Engineer mode, create and execute the Python verification artifact, document the results, and then return to `/review int8_quantization` to close the blocking review finding DR-1.
