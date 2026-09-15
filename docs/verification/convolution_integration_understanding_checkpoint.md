@@ -11,38 +11,44 @@
 
 **Status: PASSED**
 
-The learner correctly identified that the testbench is modeling the latency behavior expected from the later BRAM-backed memory system. The important architectural point is that the DUT was designed for a synchronous one-clock-latency memory interface. If the testbench supplied data immediately from the requested address, it would verify a different zero-latency architecture and could hide sequencing errors.
+The learner correctly identified that the testbench is modeling the latency behavior expected from the later BRAM-backed memory system. The DUT was designed for a synchronous one-clock-latency memory interface. A zero-latency memory model would verify a different architecture and could hide sequencing errors.
 
 ### 2. Why checking only `activation_out = 34` is insufficient
 
-**Status: PARTIAL**
+**Status: PASSED**
 
-The learner correctly noted that the internal requantization sequence also needs verification, including the product register and the rounding, shifting, and saturation stages.
-
-The full integration requirement is broader: a final correct output can still occur despite wrong memory-request order, extra reads, handshake errors, off-by-one capture timing, or stale data from another transaction. Therefore the nominal integration test must also check the `0 -> 1 -> 2` memory address sequence, read-enable counts, `engine_start`, `engine_done`, `engine_result`, `product_reg`, `capture_activation`, `activation_out`, `busy`, and `done` timing.
+The learner correctly restated that a final correct output can still appear despite wrong address sequencing, extra reads, handshake errors, off-by-one capture timing, or stale pipeline data. Therefore integration verification must also inspect memory addresses/read enables and the relevant control/timing signals rather than accepting the final INT8 value alone.
 
 ### 3. Why E5, E6, and E7 are inspected separately
 
-**Status: PARTIAL**
+**Status: PASSED**
 
-The learner correctly connected these edges to the FSM-controlled transaction sequence, but the key verification purpose is to prove data association across sequential pipeline boundaries:
+The learner correctly restated that these edges prove data association across sequential pipeline stages:
 
 ```text
-E5: engine_result becomes the final signed INT32 convolution result
-E6: product_reg captures the product derived from that E5 result
-E7: activation_out captures the INT8 q_out derived from that product_reg
+E5: final engine_result is registered
+E6: product_reg captures the product derived from that engine_result
+E7: activation_out captures the INT8 result derived from that product
 ```
 
-Observing these edges separately proves the final output was neither captured early nor late and did not come from an older pipeline value.
+Observing these edges separately proves that the final output is neither captured early nor late and is associated with the correct transaction.
 
 ### 4. Why the second legal transaction should have a different expected output
 
 **Status: PASSED**
 
-The learner correctly identified that changing the inputs should change the expected result. Using a deliberately different result for transaction 2 is stronger than repeating the same vector because it proves the second `done` pulse is associated with fresh transaction data rather than a stale `activation_out` or leftover pipeline state from transaction 1.
+The learner correctly identified that using a deliberately different second result proves the second `done` pulse is associated with fresh transaction data rather than a stale `activation_out` or leftover pipeline state from transaction 1.
 
 ## Gate result
 
-**VERIFICATION UNDERSTANDING GATE: NOT YET PASSED**
+**VERIFICATION UNDERSTANDING GATE: PASSED**
 
-Points 1 and 4 are passed. The learner must restate points 2 and 3 precisely before Step 7 integration-testbench generation is permitted.
+All required Step-6 verification concepts have now been restated correctly.
+
+The workflow may proceed to:
+
+```text
+Step 7: integration testbench generation -> tb/integration/tb_convolution_integration.v
+```
+
+No integrated XSim result is claimed at this point. Simulation and measurement remain Step 8.
