@@ -15,11 +15,11 @@ The learner correctly stated that the behavioral integration evidence is strong 
 
 ### 2. Why the E5 -> E6 -> E7 sequence is the most important integration timing relationship
 
-**Status: PARTIAL**
+**Status: PASSED**
 
-The learner connected this region to the combinational logic between the pipeline stages, but the critical review point is data association across sequential boundaries.
+The learner correctly restated that E5 -> E6 -> E7 proves correct transaction data association across registered pipeline boundaries and recognized that the associated handshake timing matters.
 
-The exact reason is:
+The required association is:
 
 ```text
 E5: engine_result registers the final INT32 convolution result
@@ -27,7 +27,7 @@ E6: product_reg captures the product derived from that E5 result
 E7: activation_out captures q_out derived from that E6 product_reg
 ```
 
-Checking these three edges proves that the architectural output corresponds to the same transaction and was not captured one cycle early, one cycle late, or from stale pipeline data.
+Together with the control handshakes, these checks prove that `activation_out` belongs to the same transaction and is not captured one cycle early, one cycle late, or from stale pipeline state.
 
 ### 3. Why measured 70 ns behavioral latency does not prove 100 MHz post-route timing closure
 
@@ -56,6 +56,14 @@ The learner correctly stated that the 80 ns busy duration is supported by the ve
 
 ## Gate result
 
-**DESIGN-REVIEW UNDERSTANDING GATE: NOT YET PASSED**
+**DESIGN-REVIEW UNDERSTANDING GATE: PASSED**
 
-Points 1, 3, 4, and 5 are passed. Point 2 must be restated in terms of correct transaction data association across the E5/E6/E7 registered pipeline boundaries before Step 11 `/test convolution_integration` is permitted.
+All five review conclusions are now understood accurately.
+
+The next mandatory workflow step is:
+
+```text
+Step 11: /test convolution_integration
+```
+
+The Knowledge Tester role must be entered in a separate interaction/response; roles are not mixed within one response.
