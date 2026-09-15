@@ -4,271 +4,118 @@
 **Active Phase:** Phase 6 — Quantization and Test-Data Preparation  
 **Module:** INT8 Quantization / Requantization  
 **Workflow stage:** STEP 9 — MEASURED VS PREDICTED  
-**Status:** Functional behavioral measurements recorded; physical resource and timing measurements still pending
+**Status:** COMPLETE for the present representative requantization configuration
 
 ## 1. Objective
 
-Compare the pre-implementation predictions in `docs/analysis/int8_quantization.md` against the measurements now available from the Step 8 Vivado XSim behavioral run.
-
-This document intentionally separates two measurement classes:
-
-1. **Functional numerical measurements**, which XSim can verify now.
-2. **Physical implementation measurements**, such as DSP usage, LUT usage, critical-path delay, WNS, and TNS, which behavioral simulation cannot provide.
-
-The Step 9 analysis is therefore only partially complete until the physical measurements are collected.
+Compare the original arithmetic, resource, and timing predictions against the measurements collected from behavioral simulation, synthesis, and routed implementation, including the timing-refinement iteration required to meet 100 MHz.
 
 ## 2. Assumptions
 
-- Target FPGA remains XC7A35T-1CPG236C on Basys 3.
-- Target clock remains 100 MHz, so the intended clock period is:
+- Target FPGA: XC7A35T-1CPG236C.
+- Target clock: 100 MHz.
+- Clock period:
 
 ```text
 Tclk = 1 / 100 MHz = 10 ns
 ```
 
-- Generated INT8 activations and weights use `[-127, +127]`.
-- One convolution contains nine INT8×INT8 products.
-- ReLU is applied before fixed-point requantization.
-- `M_INT` is a 24-bit unsigned compile-time parameter.
-- `FRAC_BITS` is a compile-time parameter in `0..42`.
-- The current `requantize_relu.v` block is combinational and contains no internal clocked register.
-- The Step 8 evidence is behavioral XSim, not post-synthesis or post-route timing simulation.
-
-## 3. Behavioral Measurement Summary
-
-The XSim testbench completed at:
+- Generated INT8 activations and weights use `[-127,+127]`.
+- One present convolution contains nine INT8xINT8 products.
+- Maximum positive accumulator under the current 3x3 single-channel contract is `145161`.
+- ReLU is applied before positive fixed-point requantization.
+- Representative physical-measurement parameters are:
 
 ```text
-23 ns
+M_INT = 13,421,773 = 24'hCCCCCD
+FRAC_BITS = 27
 ```
 
-with:
+- These physical measurements are representative, not yet layer-specific final-network measurements.
+
+## 3. Functional Arithmetic Predictions Versus Measurement
+
+### 3.1 Positive accumulator magnitude
+
+Prediction:
 
 ```text
-failures = 0
-TB_REQUANTIZE_RELU_PASS: all directed checks passed
-```
-
-The directed checks exercised four parameter configurations:
-
-```text
-A: M_INT = 1,        FRAC_BITS = 0
-B: M_INT = 1,        FRAC_BITS = 1
-C: M_INT = 3,        FRAC_BITS = 2
-D: M_INT = 0xFFFFFF, FRAC_BITS = 42
-```
-
-Across those configurations, the testbench produced 27 directed PASS checks and zero failures.
-
-## 4. Prediction: Post-ReLU Magnitude Requires 18 Unsigned Bits
-
-### Predicted
-
-The maximum quantizer-generated positive convolution accumulator is:
-
-```text
-9 × 127 × 127 = 145161
-```
-
-Compare powers of two:
-
-```text
+9 * 127 * 127 = 145161
 2^17 = 131072
 2^18 = 262144
 ```
 
-Therefore:
+Therefore 18 unsigned magnitude bits are required.
+
+Behavioral measurement preserved:
 
 ```text
-131072 < 145161 < 262144
+acc_mag = 145161
 ```
 
-so 17 unsigned bits are insufficient and 18 unsigned bits are sufficient.
+Result: **CONFIRMED**.
 
-### Measured
+### 3.2 Raw product width
 
-The maximum-width XSim case drove:
-
-```text
-acc_in = 145161
-```
-
-and observed:
+Prediction:
 
 ```text
-acc_positive = 1
-acc_mag      = 145161
-```
-
-with the internal magnitude path passing exactly.
-
-### Comparison
-
-```text
-Prediction: 145161 fits the selected 18-bit unsigned magnitude path.
-Measured:   145161 propagated through acc_mag without truncation.
-Result:     CONFIRMED functionally.
-```
-
-This does not prove that 145161 is the largest value a future generalized accelerator could produce; it confirms the present 3×3, one-channel contract.
-
-## 5. Prediction: Raw Requantization Product Requires 42 Bits
-
-### Predicted
-
-Maximum legal positive accumulator:
-
-```text
-acc_max = 145161
-```
-
-Maximum 24-bit coefficient:
-
-```text
-M_INT_max = 2^24 - 1
-          = 16777215
-```
-
-Exact maximum product:
-
-```text
-145161 × 16777215
-= 2435397306615
-```
-
-Compare powers of two:
-
-```text
-2^41 = 2199023255552
-2^42 = 4398046511104
-```
-
-Therefore:
-
-```text
+145161 * 16777215 = 2435397306615
 2^41 < 2435397306615 < 2^42
 ```
 
-so the exact product requires 42 bits.
+Therefore the raw product requires 42 bits.
 
-### Measured
-
-The maximum-width XSim test observed exactly:
+Behavioral measurement:
 
 ```text
-product = 2435397306615
+product/product_reg = 2435397306615
 ```
 
-and the testbench explicitly checked that internal value rather than only checking the final INT8 output.
+Result: **CONFIRMED**.
 
-### Comparison
+### 3.3 Rounding width
 
-```text
-Prediction: 42-bit product required.
-Measured:   Exact maximum product preserved and matched.
-Result:     CONFIRMED functionally.
-```
-
-## 6. Prediction: Rounding Intermediate Requires 43 Bits Conservatively
-
-### Predicted
-
-For `FRAC_BITS = 42`, round-to-nearest adds:
+For `FRAC_BITS=42`, the rounding bias is:
 
 ```text
-2^(42-1) = 2^41
-          = 2199023255552
-```
-
-The maximum-width test therefore expects:
-
-```text
-rounded_num
-= 2435397306615 + 2199023255552
-= 4634420562167
-```
-
-Because the 42-bit product can generate a carry when the rounding bias is added, the selected implementation uses a 43-bit rounding intermediate.
-
-### Measured
-
-XSim observed exactly:
-
-```text
-rounded_num = 4634420562167
-```
-
-followed by:
-
-```text
-q_pre = 1
-q_out = 1
-```
-
-### Comparison
-
-```text
-Prediction: 43-bit intermediate safely preserves product + bias.
-Measured:   Exact 43-bit expected value observed.
-Result:     CONFIRMED functionally.
-```
-
-This is stronger evidence than checking only `q_out = 1`, because a large right shift can hide an internal truncation mistake.
-
-## 7. Prediction: ReLU and Saturation Ordering
-
-### Predicted
-
-The selected order is:
-
-```text
-signed accumulator
- -> ReLU/sign test
- -> positive requantization
- -> rounding
- -> saturation to 127
-```
-
-### Measured
-
-Identity configuration `M_INT=1`, `FRAC_BITS=0` produced:
-
-```text
-acc = -1      -> q_out = 0
-acc = 0       -> q_out = 0
-acc = 1       -> q_out = 1
-acc = 126     -> q_out = 126
-acc = 127     -> q_out = 127
-acc = 128     -> q_out = 127
-acc = 145161  -> q_out = 127
-```
-
-### Comparison
-
-The negative path, zero path, normal positive range, exact 127 boundary, and first saturation value all matched the specification.
-
-```text
-Result: CONFIRMED functionally.
-```
-
-## 8. Prediction: Positive Round-to-Nearest Behavior
-
-### Predicted
-
-For:
-
-```text
-M_INT = 1
-FRAC_BITS = 1
-```
-
-positive requantization is:
-
-```text
-q_pre = (acc + 1) >> 1
+2^41 = 2199023255552
 ```
 
 so:
+
+```text
+2435397306615 + 2199023255552
+= 4634420562167
+```
+
+A conservative 43-bit rounding intermediate is therefore appropriate.
+
+Behavioral measurement:
+
+```text
+rounded_num = 4634420562167
+q_pre_wide = 1
+q_out = 1
+```
+
+Result: **CONFIRMED**.
+
+### 3.4 ReLU, rounding, and saturation
+
+Directed simulation confirmed:
+
+```text
+-1      -> 0
+0       -> 0
+1       -> 1
+126     -> 126
+127     -> 127
+128     -> 127
+145161  -> 127
+```
+
+Positive round-to-nearest with `M_INT=1, FRAC_BITS=1` produced:
 
 ```text
 1 -> 1
@@ -277,203 +124,343 @@ so:
 4 -> 2
 ```
 
-### Measured
-
-XSim produced exactly those four results.
+Non-power-of-two scaling with `M_INT=3, FRAC_BITS=2` produced:
 
 ```text
-Result: CONFIRMED functionally.
+1   -> 1
+2   -> 2
+3   -> 2
+5   -> 4
+169 -> 127 naturally
+170 -> 128 internally -> saturated to 127
 ```
 
-## 9. Prediction: Non-Power-of-Two Multiplication Is Required
+Result: **CONFIRMED**.
 
-### Predicted
+## 4. Original Physical Prediction
 
-For:
+Before physical measurement, the representative requantization path was predicted to require:
 
 ```text
-M_INT = 3
-FRAC_BITS = 2
+DSP48E1      : 1 optimized target, 1-2 conservative
+LUTs         : ~15-35 optimized case, ~60-80 fabric-heavy case
+BRAM         : 0
+Timing       : 100 MHz plausible but not proven
 ```
 
-we represent:
+The expected risk path was:
 
 ```text
-M_hat = 3 / 4
-      = 0.75
+engine register
+ -> ReLU/sign logic
+ -> multiply
+ -> rounding
+ -> shift
+ -> saturation
+ -> activation register
 ```
 
-This configuration proves the datapath performs multiplication followed by shifting rather than behaving only as a power-of-two shifter.
+The analysis specifically identified the multiplier plus post-DSP rounding/saturation logic as the principal timing risk.
 
-### Measured
+## 5. Baseline Unpipelined Synthesis Measurement
 
-XSim reported:
+For the representative configuration, Vivado synthesized the baseline registered wrapper as:
 
 ```text
-acc = 1   -> q_out = 1
-acc = 2   -> q_out = 2
-acc = 3   -> q_out = 2
-acc = 5   -> q_out = 4
-acc = 169 -> q_out = 127
-acc = 170 -> q_out = 127
+LUTs        = 37
+Slice FFs   = 39
+DSP48E1     = 1
+CARRY4      = 5
+BRAM        = 0
+DSP PREG    = 0
 ```
 
-The two final cases exercise different internal paths:
+DSP mapping reported:
 
 ```text
-169 × 3 = 507
-(507 + 2) >> 2 = 127
+A Size = 24
+B Size = 17
+C Size = 41
+P Size = 42
 ```
 
-so 127 is reached naturally, while:
+with:
 
 ```text
-170 × 3 = 510
-(510 + 2) >> 2 = 128
+AREG = 0
+BREG = 0
+MREG = 0
+PREG = 0
 ```
 
-so the final output reaches 127 only because saturation is activated.
+The one-DSP optimized target was therefore achieved.
+
+The measured 37 LUTs were close to the predicted low-resource range and far below the fabric-heavy estimate.
+
+## 6. Baseline Routed Timing Measurement
+
+The original unpipelined implementation failed the 10 ns target:
 
 ```text
-Result: CONFIRMED functionally.
+WNS = -0.405 ns
+TNS = -2.381 ns
+Failing setup endpoints = 7 / 7
+WHS = +0.795 ns
+THS = 0
 ```
 
-## 10. Functional Prediction-versus-Measurement Table
+The worst path had:
 
-| Item | Prediction | Behavioral measurement | Status |
+```text
+Data path delay = 10.362 ns
+Logic delay     = 6.066 ns
+Route delay     = 4.296 ns
+Logic levels    = 10
+```
+
+and included:
+
+```text
+pre-DSP LUT logic
+ -> DSP48E1
+ -> CARRY4 rounding chain
+ -> saturation/output LUTs
+```
+
+Therefore the original prediction that 100 MHz was plausible but timing-risky was correct; the first implementation did **not** close timing.
+
+## 7. Timing-Refinement Decision
+
+The measured failing path motivated a pipeline boundary immediately after the DSP multiply and before the rounding carry chain.
+
+The new stage stores the full 42-bit product.
+
+Architectural derivation showed that this register could occupy the existing S5-to-S6 handshake interval:
+
+```text
+S5: child engine registers final result
+S5 -> S6: result propagates through Stage 1
+S6: product register captures DSP result
+S6 -> S7: rounding/shift/saturation execute
+S7: final activation capture remains scheduled
+```
+
+Therefore no additional FSM state was required and the intended external start-to-done schedule remained potentially 7 clocks / 70 ns, subject to re-verification.
+
+## 8. Refined Behavioral Verification
+
+The pipelined DUT passed clocked XSim verification with:
+
+```text
+TB_REQUANTIZE_RELU_PIPELINED_PASS
+failures = 0
+```
+
+The testbench confirmed:
+
+```text
+synchronous reset
+ReLU/non-positive behavior
+identity scaling
+round-to-nearest
+non-power-of-two scaling
+natural versus saturated 127
+maximum-width 42-bit product
+43-bit rounded intermediate
+back-to-back sample-to-cycle association
+```
+
+Back-to-back samples:
+
+```text
+acc=1 -> product_reg=3  -> q=1
+acc=3 -> product_reg=9  -> q=2
+acc=5 -> product_reg=15 -> q=4
+```
+
+Result: **PIPELINE FUNCTIONAL CORRECTNESS CONFIRMED**.
+
+## 9. Refined Synthesis Measurement
+
+The refined implementation synthesized as:
+
+```text
+LUTs        = 27
+Slice FFs   = 26
+DSP48E1     = 1
+CARRY4      = 5
+BRAM        = 0
+DSP PREG    = 1
+```
+
+Vivado explicitly reported that `product_reg` was absorbed into the DSP output register.
+
+Therefore the new 42-bit pipeline state did not require 42 ordinary slice FFs.
+
+The remaining 26 slice FFs are:
+
+```text
+bit 31 + bits 17:0 = 19 accumulator FFs
+output bits 6:0     = 7 output FFs
+-------------------------------------
+total               = 26 slice FFs
+```
+
+Accumulator bits `[30:18]` were optimized away because they cannot affect the bounded 18-bit magnitude datapath. Output bit 7 was optimized away because ReLU/saturation restricts the output to `0..127`.
+
+## 10. Refined Routed Timing Measurement
+
+The pipelined implementation closes timing at 100 MHz:
+
+```text
+Setup WNS  = +3.703 ns
+Setup TNS  = 0.000 ns
+Setup failures = 0 / 37
+
+Hold WHS   = +0.694 ns
+Hold THS   = 0.000 ns
+Hold failures = 0 / 37
+
+Pulse-width WPWS = +4.500 ns
+Pulse-width TPWS = 0.000 ns
+```
+
+Vivado reports:
+
+```text
+All user specified timing constraints are met.
+```
+
+The setup-slack improvement from the original implementation is:
+
+```text
++3.703 - (-0.405) = +4.108 ns
+```
+
+Result: **100 MHz TIMING CLOSURE PROVEN** for the present representative configuration.
+
+## 11. New Critical Path After Refinement
+
+The global worst setup path is now Stage 1:
+
+```text
+Source      = accumulator_reg_reg[31]
+Destination = DSP48E1 product_reg/PREG input
+WNS         = +3.703 ns
+Data delay  = 2.781 ns
+Logic delay = 0.642 ns
+Route delay = 2.139 ns
+Logic levels = 1 LUT2
+```
+
+Delay composition:
+
+```text
+logic = 23.087%
+route = 76.913%
+```
+
+The refined worst path is therefore routing-dominated, not arithmetic-chain-dominated.
+
+The data-path increments are approximately:
+
+```text
+FDRE C->Q  = 0.518 ns
+route      = 1.545 ns
+LUT2       = 0.124 ns
+route      = 0.593 ns
+-----------------------
+total      = 2.780 ns ~= 2.781 ns reported
+```
+
+Vivado's full setup equation also includes the DSP registered endpoint's setup requirement plus clock insertion, skew, pessimism, and uncertainty. Therefore slack is not simply `10 - 2.781`.
+
+Measured timing values are:
+
+```text
+Arrival Time  = 7.352 ns
+Required Time = 11.055 ns
+Slack         = +3.703 ns
+```
+
+## 12. Prediction Versus Final Measurement Table
+
+| Item | Prediction | Final measured result | Verdict |
 |---|---|---|---|
-| Maximum legal positive accumulator exercised | `145161` | `acc_mag = 145161` | Confirmed |
-| Post-ReLU magnitude width | 18 unsigned bits | Maximum legal magnitude preserved | Confirmed functionally |
-| Requantization multiply operands | 18-bit magnitude × 24-bit coefficient | Maximum legal operands exercised | Confirmed functionally |
-| Raw product width | 42 bits | `2435397306615` matched exactly | Confirmed |
-| Rounding intermediate | 43 bits conservative | `4634420562167` matched exactly | Confirmed |
-| Maximum useful test shift | `F = 42` | `F=42` case produced exact expected result | Confirmed for tested boundary |
-| ReLU negative handling | Negative accumulator -> 0 | `-1 -> 0` | Confirmed |
-| Positive rounding | Round-to-nearest on positive path | Half-step tests all matched | Confirmed |
-| Saturation boundary | `q_pre > 127 -> 127` | 169 natural 127, 170 internal 128 then saturation | Confirmed |
-| Behavioral failures | 0 expected | `failures = 0` | Confirmed |
+| Max positive accumulator | 145161 | 145161 preserved | Confirmed |
+| Magnitude width | 18 unsigned bits | Maximum legal value preserved | Confirmed |
+| Raw product width | 42 bits | 2435397306615 exact | Confirmed |
+| Rounding intermediate | 43 bits conservative | 4634420562167 exact | Confirmed |
+| ReLU/round/saturation | Directed behavior as specified | All tests pass | Confirmed |
+| DSP usage | 1 optimized, 1-2 conservative | 1 DSP48E1 | Optimized target confirmed |
+| Baseline LUTs | ~15-35 optimized | 37 | Slightly above low estimate |
+| Refined LUTs | Not separately predicted | 27 | Measured |
+| BRAM | 0 | 0 | Confirmed |
+| Baseline PREG | 0 expected | 0 | Confirmed |
+| Refined PREG | Desired 1 | 1 | Confirmed |
+| Baseline 100 MHz timing | Plausible, unproven | WNS -0.405 ns | Failed |
+| Refined 100 MHz timing | Pipeline expected to fix violation | WNS +3.703 ns, TNS 0 | Proven |
+| Hold timing after refinement | Must remain non-negative | WHS +0.694 ns | Proven |
+| New limiting stage | Unknown before implementation | Stage 1 | Measured |
 
-## 11. Physical Predictions That Are Still Unmeasured
+## 13. Fmax Limitation
 
-The following original predictions remain unresolved:
+The positive WNS at a 10 ns clock proves 100 MHz closure.
 
-| Physical item | Prediction | Current measurement status |
-|---|---|---|
-| DSP48E1 usage | 1 to 2 | Pending synthesis |
-| LUTs outside multiplier | ~15–35 if DSP absorbs addition; ~60–80 if fabric addition | Pending synthesis |
-| Additional BRAM | 0 expected | Pending synthesis confirmation |
-| Combinational critical-path delay | Must fit within the relevant 10 ns registered path | Pending registered timing measurement |
-| WNS | Must be >= 0 ns for setup closure | Pending implementation timing |
-| TNS | Expected 0 if all setup paths pass | Pending implementation timing |
-| External start-to-done latency | 70 ns if existing control schedule is preserved | Not measured in this standalone unit test |
-
-## 12. Important Measurement Trap: Do Not Synthesize the Default Parameters and Treat Them as Final
-
-The current module defaults are:
+Although:
 
 ```text
-M_INT = 1
-FRAC_BITS = 0
+10.000 - 3.703 = 6.297 ns
 ```
 
-If `requantize_relu` is synthesized as a standalone top with those defaults, the arithmetic simplifies to approximately:
+this is not a formally measured minimum clock period or guaranteed Fmax. A tighter constraint can change placement, routing, uncertainty impact, and optimization decisions.
+
+Accepted claim:
 
 ```text
-q_pre = acc_mag
+100 MHz timing closure is proven for this implementation.
 ```
 
-The synthesis optimizer can remove or greatly simplify the intended wide constant multiplication and rounding logic.
+Higher-frequency Fmax remains unmeasured.
 
-Therefore a resource report from the default instance would **not** be a valid measurement of the intended nontrivial requantization datapath.
+## 14. External-Latency Interpretation
 
-For a meaningful resource comparison, synthesis must use either:
+The pipeline register was deliberately inserted into an already existing control gap rather than by adding a new FSM state.
+
+The design derivation therefore predicts that final activation capture remains at S7 and that external start-to-done latency remains:
 
 ```text
-A. the actual final layer constants generated from the quantized data,
+7 clocks * 10 ns = 70 ns
 ```
 
-or, before those constants exist,
+The pipelined unit verification proves the local product-stage timing and sample association, but a fresh integrated control-level simulation would be required if the project wants a new measured end-to-end S0-to-S7 latency trace after integration.
+
+Thus:
 
 ```text
-B. an explicitly labeled representative nontrivial coefficient configuration.
+architectural external-latency prediction = 70 ns
+new standalone timing-refinement physical latency penalty = no additional FSM state
+integrated re-measurement = optional follow-up if required for final review evidence
 ```
 
-The earlier analysis example used:
+## 15. Step 9 Verdict
+
+The required measured-vs-predicted work for the representative Phase-6 requantization implementation is complete:
 
 ```text
-M = 0.1
-M_INT = 13421773
-FRAC_BITS = 27
+functional arithmetic measurement        : COMPLETE / PASS
+baseline synthesis resource measurement  : COMPLETE
+baseline routed timing measurement       : COMPLETE / FAIL at 100 MHz
+pipeline refinement                      : COMPLETE
+refined behavioral verification          : COMPLETE / PASS
+refined synthesis resource measurement   : COMPLETE
+DSP PREG inference                       : COMPLETE / CONFIRMED
+refined routed setup timing              : COMPLETE / PASS
+refined routed hold timing               : COMPLETE / PASS
+critical-path characterization           : COMPLETE
+100 MHz timing closure                   : PROVEN
 ```
 
-which is a reasonable representative case for exploratory synthesis, but it must not be mislabeled as the final layer-specific measurement.
+**STEP 9 STATUS: COMPLETE.**
 
-## 13. Important Timing Trap: Standalone Combinational Synthesis Does Not Prove the 10 ns Path
-
-`requantize_relu.v` is currently combinational. It has no input register, output register, or clock port.
-
-Therefore synthesizing this module alone does not directly measure the intended system timing path:
-
-```text
-engine result register
- -> requantization logic
- -> activation capture register
-```
-
-The 100 MHz requirement is a **register-to-register timing requirement**.
-
-A valid 10 ns timing measurement requires one of the following:
-
-```text
-1. the requantization block integrated between the real source and destination registers,
-```
-
-or
-
-```text
-2. a dedicated synthesis/timing harness containing representative source and destination registers clocked at 100 MHz.
-```
-
-Without one of those registered contexts, a standalone combinational timing report must not be interpreted as proof that the real accelerator closes timing at 100 MHz.
-
-## 14. Step 9 Status
-
-The functional part of measured-vs-predicted analysis is complete:
-
-```text
-18-bit positive magnitude prediction : confirmed
-42-bit raw product prediction         : confirmed
-43-bit rounding intermediate          : confirmed
-ReLU behavior                         : confirmed
-positive rounding behavior            : confirmed
-saturation behavior                   : confirmed
-maximum-width arithmetic              : confirmed
-```
-
-The physical part is still open:
-
-```text
-DSP count            : pending
-LUT count            : pending
-FF count             : pending
-BRAM confirmation    : pending
-critical-path delay  : pending
-WNS/TNS              : pending
-100 MHz closure      : pending
-```
-
-Therefore **Step 9 is IN PROGRESS, not complete**. Step 10 design review must not begin until the required physical measurements are collected and compared with the predictions.
-
-## 15. Next Measurement Decision
-
-Before running synthesis for final conclusions, the architecture needs a valid physical measurement context.
-
-The next action should be to choose whether the measurement uses:
-
-```text
-actual layer-specific M_INT / FRAC_BITS
-```
-
-or a clearly labeled representative nontrivial configuration, and then place the combinational requantizer between source and destination registers for a meaningful 100 MHz timing measurement.
-
-No DSP/LUT/timing conclusion should be recorded from the default `M_INT=1`, `FRAC_BITS=0` standalone top because that configuration can be optimized into a much simpler circuit and would bias the measured-vs-predicted comparison.
+The module workflow may now advance to Step 10 `/review int8_quantization`.
