@@ -4,142 +4,87 @@
 **Active Phase:** Phase 8 — Basys 3 Top-Level Integration, Physical Validation, and Final Optimization  
 **Module:** `basys3_top_level`  
 **Workflow stage:** Step 1 — `/teach basys3_top_level` understanding gate  
-**Status:** PARTIAL — one architectural boundary must be corrected before `/design basys3_top_level`.
+**Status:** PASSED — Step 2 `/design basys3_top_level` is unlocked.
 
-The core-only synthesis/implementation baseline has already been completed and understood. This checkpoint evaluates the learner's board-wrapper restatement.
+The core-only synthesis/implementation baseline has already been completed and understood. This checkpoint records the learner's final board-wrapper understanding.
 
-## 1. Why `convolution_integration` is not a complete Basys-3 top level
+## 1. `convolution_integration` versus the Basys-3 top
 
-**Status: PASSED**
+**PASSED**
 
-The learner correctly distinguished the accelerator integration module from a physical Basys-3 top level. The existing core does not yet own board-specific pushbutton/switch/LED connections or board pin constraints.
+The learner correctly distinguished the reusable accelerator core from the physical board wrapper. Board-specific clock entry, controls, LEDs/status and pin-level integration belong outside the compute core.
 
-## 2. Responsibilities of `basys3_top_level` versus the accelerator core
+## 2. Memory ownership boundary
 
-**Status: PARTIAL**
+**PASSED**
 
-The learner correctly assigned the following board-wrapper responsibilities:
-
-```text
-100 MHz board clock entry
-button/switch handling
-clean start generation
-LED/status mapping
-instantiation of convolution_integration
-```
-
-However, the learner stated that the accelerator core should retain the memories. That is not the current Phase-7/Phase-8 architecture.
-
-The intended boundary is:
+The learner correctly restated the final ownership boundary:
 
 ```text
 convolution_integration
-  owns:
-    control_fsm
-    memory request sequencing
-    convolution arithmetic
-    requantization
-    architectural activation_out
-    busy/done protocol
+  -> memory request sequencing
+  -> read enables / addresses
+  -> consumes returned activation and weight data
+  -> convolution compute + requantization
 
-basys3_top_level / platform side
-  owns:
-    physical or inferred activation memory
-    physical or inferred weight memory
-    board input conditioning
-    start pulse generation
-    board-visible status/result logic
-    board clock/pin constraints
+basys3_top_level
+  -> physical/inferred activation memory
+  -> physical/inferred weight memory
+  -> connects memory outputs back to convolution_integration
+  -> board infrastructure
 ```
 
-`memory_interface_dataflow` inside the accelerator core generates `rd_en` and addresses and consumes returned memory data, but the physical memories themselves remain outside `convolution_integration` at this architecture boundary.
+The important distinction is that `memory_interface_dataflow` controls **how** memory is accessed, but the actual FPGA memories are platform-side resources outside `convolution_integration`.
 
-## 3. Why a physical button cannot directly drive `start`
+## 3. Physical input handling
 
-**Status: PASSED**
+**PASSED**
 
-The learner correctly identified both asynchronous clock-domain behavior and mechanical bounce. Direct use could create metastability risk and multiple unintended transaction launches.
+The learner correctly explained that board pushbuttons are asynchronous and mechanically noisy, so synchronization, debouncing and one-cycle pulse generation are distinct required concepts.
 
-## 4. Synchronization, debouncing, and one-cycle pulse generation
+## 4. One-clock memory-read contract
 
-**Status: PASSED**
+**PASSED**
 
-The learner correctly distinguished:
+The learner correctly preserved the Phase-7 assumption that a read request at one edge produces the corresponding memory data one clock later.
+
+## 5. Packed memory sizing
+
+**PASSED**
 
 ```text
-synchronization -> safe clock-domain crossing
-debouncing      -> remove mechanical bounce transitions
-one-cycle pulse -> convert one stable event into one core start pulse
+9 INT8 values = 72 useful bits
+ceil(72/32) = 3 x 32-bit words
+96 packed bits per operand memory
+192 packed bits combined
 ```
 
-and correctly gave the conceptual sequence:
+## 6. BRAM inference understanding
 
-```text
-button -> synchronizer -> debouncer -> one-cycle pulse -> start
-```
+**PASSED**
 
-## 5. One-clock synchronous memory-read contract
+The learner correctly understands that a small RTL array may map to registers, LUT RAM or BRAM; synthesis evidence is required to prove the physical mapping.
 
-**Status: PASSED**
+## 7. Human-visible done indication
 
-The learner correctly stated that the Phase-7 state/data schedule was derived around one-clock read latency, so changing to a different memory timing contract would invalidate the established sequencing assumptions.
+**PASSED**
 
-## 6. Packed memory capacity derivation
+A one-cycle `done` event at 100 MHz lasts 10 ns and is not directly visible to a human, so any LED indication must use board-wrapper observability logic such as a latched flag or stretcher without changing the core protocol.
 
-**Status: PASSED**
+## 8. Final board-top physical validation
 
-The learner correctly derived:
+**PASSED**
 
-```text
-9 INT8 values = 9 x 8 = 72 useful bits
-ceil(72 / 32) = 3 words
-3 x 32 = 96 packed bits per operand memory
-2 x 96 = 192 packed bits combined
-```
+The learner correctly understands that `basys3_top_level` must be synthesized and implemented independently because memories, board I/O, synchronization logic, routing and fanout can change both resource usage and timing.
 
-Each operand memory therefore has 24 padding bits in the final packed capacity.
+## 9. Low-power board-top concept
 
-## 7. Why RTL memory declaration does not prove BRAM inference
+**PASSED**
 
-**Status: PASSED**
-
-The learner correctly stated that Vivado may map a memory into BRAM, distributed RAM, or registers depending on size, coding style, ports, read behavior, and synthesis heuristics. Physical BRAM use must be confirmed in the synthesis utilization/netlist evidence.
-
-## 8. Why raw `done` is not directly human-visible
-
-**Status: PASSED**
-
-At 100 MHz:
-
-```text
-Tclk = 10 ns
-```
-
-The learner correctly explained that a one-cycle `done` event is too short to observe visually and should be converted into a latched or otherwise human-visible board status without changing the internal core protocol.
-
-## 9. Why the final board top needs its own synthesis/implementation
-
-**Status: PASSED**
-
-The learner correctly stated that added board logic, I/O, memories, routing, fanout, and hierarchy change both physical resource use and timing. Therefore the final `basys3_top_level` requires its own resource and post-route timing evidence.
-
-## 10. Low-power meaning at board-top level
-
-**Status: PASSED**
-
-The learner correctly emphasized reducing unnecessary switching/activity and using clock-enable style control rather than ordinary combinational logic to gate FPGA clocks, which could introduce clock-quality and timing problems.
+The learner correctly emphasized reducing unnecessary switching and using clock-enable/activity-control techniques rather than ordinary combinational clock gating.
 
 ## Gate result
 
-**BASYS3 TOP-LEVEL TEACHING GATE: NOT YET PASSED**
+**BASYS3 TOP-LEVEL TEACHING GATE: PASSED**
 
-Items 1 and 3 through 10 are passed. Item 2 remains partial only because the physical activation/weight memories were assigned to the accelerator core instead of the Phase-8 platform/top-level side.
-
-The learner must restate the ownership boundary between:
-
-```text
-convolution_integration: memory sequencing + compute
-basys3_top_level: physical/inferred activation and weight memories + board infrastructure
-```
-
-before Step 2 `/design basys3_top_level` is permitted.
+Step 1 `/teach basys3_top_level` is complete. Step 2 `/design basys3_top_level` is now permitted.
