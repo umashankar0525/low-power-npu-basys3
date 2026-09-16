@@ -6,9 +6,9 @@ This project is an architecture-first hardware/software co-design of a low-power
 
 ## Current Phase
 
-**Active Phase: Phase 6 — Quantization and Test-Data Preparation**
+**Active Phase: Phase 8 — Basys 3 Top-Level Integration, Physical Validation, and Final Optimization**
 
-Phase 5 completed the Control FSM workflow through teaching, design, prediction, RTL, verification, XSim measurement, review, and self-test. Phase 6 now moves to FP32-to-INT8 quantization and generation of numerically well-defined test data before full-system integration.
+Phase 7 completed convolution integration through teaching, design, prediction, RTL, verification, XSim measurement, measured-vs-predicted analysis, design review, and self-test. Phase 8 begins with core-only physical characterization of `convolution_integration`, then moves to the Basys-3 board top, final verification, implementation measurement, low-power optimization, and final design review. The core-only Phase-8 baseline synthesis/implementation has been completed and the `basys3_top_level` design step is now active.
 
 ### Reference Parameters
 
