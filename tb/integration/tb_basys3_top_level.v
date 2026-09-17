@@ -4,15 +4,18 @@
 // Integration testbench: basys3_top_level
 // Phase 8 — Basys 3 Top-Level Integration
 //
-// IMPORTANT:
-//   This testbench is generated from the approved verification plan.
-//   It has NOT yet been run in XSim.
+// Step-8 debug revision:
+//   The first XSim run showed that a debounced physical reset cannot be
+//   expected to abort a 70 ns transaction before normal completion. The tests
+//   therefore separate two contracts:
+//
+//     1) physical reset button -> synchronizer/debounce -> eventual state clear
+//     2) already-clean reset_level while busy -> synchronous transaction abort
 //
 // Simulation strategy:
 //   - Keep the real 100 MHz clock (10 ns period).
 //   - Reduce only the debounce threshold from 1,000,000 cycles to 4 cycles.
-//   - Measure accelerator latency from the clock edge that actually samples
-//     core_start high, not from the asynchronous physical button transition.
+//   - Measure accelerator latency from the clock edge that samples core_start.
 // -----------------------------------------------------------------------------
 module tb_basys3_top_level;
 
@@ -34,8 +37,8 @@ module tb_basys3_top_level;
     integer request_count;
     integer busy_mask_checks;
 
-    reg     track_transaction;
-    reg     pending_read;
+    reg        track_transaction;
+    reg        pending_read;
     reg [31:0] pending_activation_word;
     reg [31:0] pending_weight_word;
 
@@ -56,30 +59,28 @@ module tb_basys3_top_level;
         .led_done   (led_done)
     );
 
-    // -------------------------------------------------------------------------
-    // 100 MHz clock
-    // -------------------------------------------------------------------------
+    // 100 MHz => 10 ns period.
     initial begin
         clk_100mhz = 1'b0;
         forever #5 clk_100mhz = ~clk_100mhz;
     end
 
     // -------------------------------------------------------------------------
-    // Check helper
+    // Generic check helper
     // -------------------------------------------------------------------------
     task automatic check;
         input condition;
         input [1023:0] message;
         begin
             if (condition !== 1'b1) begin
-                $display("ERROR @ %0t ns: %0s", $time, message);
+                $display("ERROR @ %0t: %0s", $time, message);
                 error_count = error_count + 1;
             end
         end
     endtask
 
     // -------------------------------------------------------------------------
-    // Expected memory contents
+    // Expected initialized memory contents
     // -------------------------------------------------------------------------
     function [31:0] expected_activation_word;
         input [1:0] addr;
@@ -110,20 +111,20 @@ module tb_basys3_top_level;
     // -------------------------------------------------------------------------
     task reset_transaction_scoreboard;
         begin
-            accepted_start_count      = 0;
-            raw_done_count            = 0;
-            request_count             = 0;
-            busy_mask_checks          = 0;
-            pending_read              = 1'b0;
-            pending_activation_word   = 32'd0;
-            pending_weight_word       = 32'd0;
-            accepted_start_time       = 0;
-            raw_done_time             = 0;
+            accepted_start_count    = 0;
+            raw_done_count          = 0;
+            request_count           = 0;
+            busy_mask_checks        = 0;
+            pending_read            = 1'b0;
+            pending_activation_word = 32'd0;
+            pending_weight_word     = 32'd0;
+            accepted_start_time     = 0;
+            raw_done_time           = 0;
         end
     endtask
 
     // -------------------------------------------------------------------------
-    // Wait helpers with finite timeout
+    // Bounded wait helpers
     // -------------------------------------------------------------------------
     task wait_for_start_count;
         input integer target;
@@ -196,8 +197,8 @@ module tb_basys3_top_level;
             wait_for_reset_level(1'b1, 20,
                 "reset button did not debounce high within timeout");
 
-            // One additional rising edge lets the synchronous core reset sample
-            // the already-clean reset_level.
+            // The clean reset level is synchronous to the core. Give the core
+            // one edge to sample the already-high reset_level.
             @(posedge clk_100mhz);
             #1;
             check(dut.core_busy === 1'b0,
@@ -220,9 +221,7 @@ module tb_basys3_top_level;
     endtask
 
     // -------------------------------------------------------------------------
-    // Accepted-start monitor.
-    // The latency boundary is the rising clock edge where core_start is already
-    // high in the active region and is therefore sampled by convolution_integration.
+    // Accepted-start and raw-done monitors
     // -------------------------------------------------------------------------
     always @(posedge clk_100mhz) begin
         if (track_transaction && (dut.core_start === 1'b1)) begin
@@ -232,7 +231,6 @@ module tb_basys3_top_level;
         end
     end
 
-    // Raw done becomes high after the controller enters its DONE state.
     always @(posedge dut.core_done) begin
         if (track_transaction) begin
             raw_done_count = raw_done_count + 1;
@@ -242,15 +240,12 @@ module tb_basys3_top_level;
     end
 
     // -------------------------------------------------------------------------
-    // Memory request ordering + one-clock latency monitor
-    //
-    // At a rising edge, the memory read always blocks and this monitor both see
-    // the pre-NBA values. Therefore activation_data/weight_data at this edge
-    // must correspond to the PREVIOUS requested address. The current request
-    // becomes visible on the memory outputs only after this edge.
+    // Memory request order + one-clock synchronous-return monitor
     // -------------------------------------------------------------------------
     always @(posedge clk_100mhz) begin
         if (track_transaction) begin
+            // A request captured on the previous edge must already have updated
+            // the registered memory outputs by this edge.
             if (pending_read) begin
                 check(dut.activation_data === pending_activation_word,
                       "activation_data did not match the previous-cycle request");
@@ -266,7 +261,6 @@ module tb_basys3_top_level;
                 check((dut.activation_rd_en === 1'b1) &&
                       (dut.weight_rd_en === 1'b1),
                       "activation and weight read enables were not asserted together");
-
                 check(dut.activation_addr === dut.weight_addr,
                       "activation and weight logical addresses differed");
 
@@ -301,12 +295,12 @@ module tb_basys3_top_level;
         btn_reset         = 1'b0;
         reset_transaction_scoreboard;
 
-        // Allow all FPGA-style initial values to settle.
+        // Allow FPGA-style initialization to settle.
         repeat (3) @(posedge clk_100mhz);
         #1;
 
         // ---------------------------------------------------------------------
-        // TEST 1 — Physical reset path
+        // TEST 1 — Physical reset path while idle
         // ---------------------------------------------------------------------
         $display("TEST 1: physical reset path");
         apply_physical_reset;
@@ -318,8 +312,6 @@ module tb_basys3_top_level;
         reset_transaction_scoreboard;
         track_transaction = 1'b1;
 
-        // Each unstable state lasts only one sampled clock, shorter than the
-        // four-cycle debounce requirement.
         @(negedge clk_100mhz); btn_start = 1'b1;
         @(negedge clk_100mhz); btn_start = 1'b0;
         @(negedge clk_100mhz); btn_start = 1'b1;
@@ -338,8 +330,7 @@ module tb_basys3_top_level;
         track_transaction = 1'b0;
 
         // ---------------------------------------------------------------------
-        // TEST 3 — Stable press, hold behavior, memory protocol, 70 ns latency,
-        //          busy mask, result=34, raw done, and persistent done latch.
+        // TEST 3 — Full nominal board transaction
         // ---------------------------------------------------------------------
         $display("TEST 3: full board transaction and protocol checks");
         reset_transaction_scoreboard;
@@ -350,13 +341,10 @@ module tb_basys3_top_level;
 
         wait_for_start_count(1, 20,
             "stable button press did not produce an accepted core_start");
-
         check(dut.core_busy === 1'b1,
               "core_busy was not high after accepted core_start");
 
-        // Directly exercise the busy-mask condition while the accelerator is
-        // active. The force targets only the internal start_rise test point;
-        // it does not alter core_busy.
+        // Directly exercise the exact busy-mask property.
         @(negedge clk_100mhz);
         check(dut.core_busy === 1'b1,
               "core was no longer busy before busy-mask test");
@@ -393,19 +381,14 @@ module tb_basys3_top_level;
         check(busy_mask_checks == 1,
               "busy-mask condition was not explicitly exercised");
 
-        // The board-side latch has not yet sampled the newly-visible raw done.
+        // done_latched samples raw core_done on the following rising edge.
         check(led_done === 1'b0,
-              "led_done asserted in the same cycle as raw core_done instead of the following edge");
-
-        // On the next rising edge, the board wrapper samples core_done=1 and
-        // makes done_latched persistent.
+              "led_done asserted in the same cycle as raw core_done");
         @(posedge clk_100mhz);
         #1;
         check(led_done === 1'b1,
               "led_done did not latch completion one clock after raw core_done");
 
-        // Keep the physical button held high for several more cycles. No new
-        // rising-edge event should be generated.
         repeat (5) @(posedge clk_100mhz);
         #1;
         check(accepted_start_count == 1,
@@ -413,67 +396,126 @@ module tb_basys3_top_level;
         check(led_done === 1'b1,
               "latched completion status did not remain persistent");
 
-        // Release the start button and allow it to debounce low.
         @(negedge clk_100mhz);
         btn_start = 1'b0;
         wait_for_start_level(1'b0, 20,
             "start button did not debounce low after release");
         check(led_done === 1'b1,
               "releasing the start button incorrectly cleared done_latched");
-
         track_transaction = 1'b0;
 
         // ---------------------------------------------------------------------
-        // TEST 4 — Reset during an active transaction must abort it cleanly.
+        // TEST 4A — Physical reset pressed while transaction is active
+        //
+        // This test does NOT require the 70 ns transaction to be aborted. It
+        // verifies that the physical button path eventually creates reset_level
+        // and that the next synchronous core edge clears architectural state.
         // ---------------------------------------------------------------------
-        $display("TEST 4: reset during active transaction");
+        $display("TEST 4A: physical reset during active transaction - eventual clear");
         reset_transaction_scoreboard;
         track_transaction = 1'b1;
 
         @(negedge clk_100mhz);
         btn_start = 1'b1;
-
         wait_for_start_count(1, 20,
-            "second stable press did not produce accepted core_start");
-
+            "physical-reset test did not produce accepted core_start");
         check(dut.core_busy === 1'b1,
-              "core was not busy before active-transaction reset test");
+              "core was not busy before physical-reset timing test");
 
-        // Immediately begin a clean physical reset while the transaction is
-        // active, and release the start button so it cannot re-arm afterward.
         @(negedge clk_100mhz);
         btn_start = 1'b0;
         btn_reset = 1'b1;
 
         wait_for_reset_level(1'b1, 20,
-            "reset did not debounce high during active transaction");
+            "physical reset did not debounce high during active transaction");
 
-        // Let the synchronous reset be sampled by the core and board status FF.
+        // By this time raw_done may legitimately have occurred because the
+        // qualified physical reset path is slower than the 70 ns computation.
+        check(raw_done_count <= 1,
+              "physical-reset test observed more than one raw completion");
+
         @(posedge clk_100mhz);
         #1;
         check(dut.core_busy === 1'b0,
-              "core_busy did not clear after active-transaction reset");
+              "physical reset did not eventually clear core_busy");
         check(dut.core_done === 1'b0,
-              "core_done remained high after active-transaction reset");
+              "physical reset did not eventually clear core_done");
         check(led_result === 8'd0,
-              "activation result was not cleared by active-transaction reset");
+              "physical reset did not eventually clear led_result");
         check(led_done === 1'b0,
-              "done_latched was not cleared by active-transaction reset");
-        check(raw_done_count == 0,
-              "aborted transaction incorrectly produced a raw core_done pulse");
+              "physical reset did not eventually clear led_done");
 
         @(negedge clk_100mhz);
         btn_reset = 1'b0;
         wait_for_reset_level(1'b0, 20,
-            "reset did not debounce low after active-transaction reset test");
+            "physical reset did not debounce low after release");
         wait_for_start_level(1'b0, 20,
-            "start conditioner did not return to low after reset");
+            "start conditioner did not return low after physical reset");
         @(posedge clk_100mhz);
         #1;
         track_transaction = 1'b0;
 
         // ---------------------------------------------------------------------
-        // TEST 5 — Recovery: run a fresh legal transaction after reset.
+        // TEST 4B — Clean synchronous reset abort while core is busy
+        //
+        // This isolates the actual core reset contract from human-interface
+        // synchronization/debounce delay. reset_level is forced only as a
+        // verification point; the accelerator RTL is not modified.
+        // ---------------------------------------------------------------------
+        $display("TEST 4B: clean reset_level abort while busy");
+        reset_transaction_scoreboard;
+        track_transaction = 1'b1;
+
+        @(negedge clk_100mhz);
+        btn_start = 1'b1;
+        wait_for_start_count(1, 20,
+            "clean-reset abort test did not produce accepted core_start");
+        check(dut.core_busy === 1'b1,
+              "core was not busy before clean-reset abort test");
+
+        // Allow one engine-launch clock so the transaction has genuinely begun.
+        @(posedge clk_100mhz);
+        #1;
+        check(dut.core_busy === 1'b1,
+              "core was not busy after engine-launch edge");
+
+        // Assert the already-clean synchronous reset before normal E7 completion.
+        @(negedge clk_100mhz);
+        btn_start = 1'b0;
+        force dut.reset_level = 1'b1;
+        #1;
+        check(dut.reset_level === 1'b1,
+              "forced clean reset_level did not assert");
+
+        @(posedge clk_100mhz);
+        #1;
+        check(dut.core_busy === 1'b0,
+              "clean reset_level did not abort core_busy");
+        check(dut.core_done === 1'b0,
+              "clean reset_level allowed core_done during abort edge");
+        check(led_result === 8'd0,
+              "clean reset_level did not clear architectural result");
+        check(led_done === 1'b0,
+              "clean reset_level did not clear done_latched");
+        check(raw_done_count == 0,
+              "clean synchronous reset did not abort before raw core_done");
+
+        @(negedge clk_100mhz);
+        release dut.reset_level;
+
+        // The abandoned transaction must not reappear after reset is released.
+        repeat (10) @(posedge clk_100mhz);
+        #1;
+        check(raw_done_count == 0,
+              "aborted transaction produced a stale raw core_done after reset release");
+        check(dut.core_busy === 1'b0,
+              "core became busy again after clean-reset abort without a new start");
+        wait_for_start_level(1'b0, 20,
+            "start conditioner did not return low after clean-reset abort");
+        track_transaction = 1'b0;
+
+        // ---------------------------------------------------------------------
+        // TEST 5 — Recovery after reset-abort
         // ---------------------------------------------------------------------
         $display("TEST 5: post-reset recovery transaction");
         reset_transaction_scoreboard;
