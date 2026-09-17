@@ -4,7 +4,7 @@
 **Active Phase:** Phase 8 — Basys 3 Top-Level Integration, Physical Validation, and Final Optimization  
 **Module:** `basys3_top_level`  
 **Workflow stage:** Step 3 — `/analyze basys3_top_level` understanding gate  
-**Status:** PARTIAL — two corrections required before Step 4 / RTL eligibility.
+**Status:** PASSED — Step 4 learner confirmation is satisfied and Step 5 RTL generation is now eligible.
 
 ## Passed concepts
 
@@ -23,22 +23,17 @@ The learner correctly explained:
 
 ## Correction 1 — useful-byte interpretation
 
-The final values `24 physical bytes`, `18 useful bytes`, and `75% packing efficiency` are correct, but the useful-data explanation must use the actual operand organization.
+**PASSED.**
 
-Each transaction contains:
-
-```text
-9 INT8 activations = 9 bytes useful
-9 INT8 weights     = 9 bytes useful
-```
-
-Therefore:
+The learner correctly restated the actual operand organization:
 
 ```text
-useful bytes = 9 + 9 = 18 bytes
+9 INT8 activations = 9 useful bytes
+9 INT8 weights     = 9 useful bytes
+useful total       = 18 bytes
 ```
 
-The physical transfer is:
+The physical transfer remains:
 
 ```text
 3 activation words x 4 bytes = 12 bytes
@@ -46,32 +41,40 @@ The physical transfer is:
 physical total                = 24 bytes
 ```
 
-Hence:
+Therefore:
 
 ```text
 packing efficiency = 18 / 24 = 75%
 ```
 
-The design does not contain three 24-bit activation operands or three 24-bit weight operands; rather, it contains nine INT8 elements per operand set packed across three 32-bit words.
+The operand sets are nine INT8 values each, packed across three 32-bit words; they are not three 24-bit operands.
 
 ## Correction 2 — DSP prediction for `M_INT = 3`
 
-`M_INT = 3` does not imply a 3-bit-by-3-bit multiplier.
+**PASSED.**
 
-The requantizer still conceptually multiplies the accumulator by a 24-bit compile-time constant whose numerical value is 3. Because the constant is fixed, synthesis can implement:
+The learner correctly restated that `M_INT = 3` is still represented as a 24-bit compile-time constant whose numerical value is 3.
+
+Vivado may optimize the constant multiplication using an equivalent structure such as:
 
 ```text
 x * 3 = (x << 1) + x
 ```
 
-or another equivalent constant-multiply structure using LUT/carry logic instead of a DSP48E1.
+Therefore `DSP = 0` is a reasonable prediction because of constant-multiplier optimization, not because the operation is a 3-bit-by-3-bit multiplication.
 
-Therefore `DSP = 0` is a reasonable prediction because of **constant-multiplier optimization**, not because the multiplication is inherently only 3 bits wide.
-
-Final DSP mapping remains a synthesis measurement, not a guaranteed prediction.
+Final DSP mapping remains a synthesis measurement.
 
 ## Gate result
 
-**BASYS3 TOP-LEVEL ANALYSIS UNDERSTANDING GATE: NOT YET PASSED**
+**BASYS3 TOP-LEVEL ANALYSIS UNDERSTANDING GATE: PASSED**
 
-The learner must restate the two corrected points above before Step 3 can pass and before Phase-8 RTL generation becomes eligible.
+The learner has correctly restated the prediction model and its two corrected details. This satisfies the mandatory Step-4 confirmation requirement as well.
+
+The workflow may now proceed to:
+
+```text
+Step 5 — RTL generation for basys3_top_level
+```
+
+No simulation or measurement should occur until the RTL is generated and the later verification/testbench stages are completed in sequence.
