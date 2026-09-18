@@ -4,7 +4,7 @@
 **Active Phase:** Phase 8 — Basys 3 Top-Level Integration, Physical Validation, and Final Optimization  
 **Module:** `basys3_top_level`  
 **Workflow stage:** Step 8 — simulation + measurement understanding gate  
-**Status:** PARTIAL — one correction required before Step 9.
+**Status:** PASSED — Step 9 measured-vs-predicted analysis is unlocked.
 
 ## Passed concepts
 
@@ -27,30 +27,36 @@ and derived:
 which matches the predicted 7-cycle latency at 100 MHz.
 
 ### 2. Meaning of the memory checks
-**PARTIAL — address-order correction required.**
+**PASSED.**
 
-The learner correctly understood that `request_count = 3` alone is not sufficient evidence. The testbench also checks the exact logical request order, activation/weight request pairing, and that returned data corresponds to the previous-cycle request.
-
-However, the learner stated the request order as:
+The learner correctly restated that:
 
 ```text
-1 -> 2 -> 3
+request_count = 3
 ```
 
-The actual logical address sequence is:
+proves that three paired operand-read cycles occurred, while the zero-error assertions additionally prove that:
 
 ```text
-0 -> 1 -> 2
+logical request order = 0 -> 1 -> 2
 ```
 
-because the three packed operand words are stored at logical addresses 0, 1, and 2.
+and that each activation/weight return matched the **previous clock's request**.
+
+Therefore the completed simulation proves more than the existence of three reads. It proves both:
+
+```text
+correct memory sequencing
++
+one-clock synchronous memory-return behavior
+```
+
+for the directed transactions.
 
 ### 3. Behavioral versus physical proof
-**PASSED IN PRINCIPLE.**
+**PASSED.**
 
-The learner correctly stated that BRAM use and physical timing require synthesis and implementation rather than behavioral simulation.
-
-The precise evidence boundary is:
+The learner correctly distinguished behavioral simulation from physical implementation evidence.
 
 ```text
 BRAM inference / mapping
@@ -61,14 +67,19 @@ BRAM inference / mapping
 -> WNS/TNS/WHS/THS
 ```
 
+Behavioral XSim proves protocol and functional timing relationships but does not prove FPGA resource mapping or routed timing closure.
+
 ## Gate result
 
-**BASYS3 TOP-LEVEL SIMULATION UNDERSTANDING GATE: NOT YET PASSED**
+**BASYS3 TOP-LEVEL SIMULATION UNDERSTANDING GATE: PASSED**
 
-Before Step 9, the learner must correct the memory address order to:
+Step 8 behavioral simulation + measurement and its understanding checkpoint are complete.
+
+The workflow may now proceed to:
 
 ```text
-0 -> 1 -> 2
+Step 9 — update docs/analysis/basys3_top_level.md
+         with measured-vs-predicted behavioral results
 ```
 
-and restate why `request_count = 3` plus the zero-error assertions proves both sequencing and one-clock data-return behavior.
+Physical resource and timing measurements remain pending until board-top synthesis and implementation are performed.
