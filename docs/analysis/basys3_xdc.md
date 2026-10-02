@@ -585,3 +585,333 @@ Before Step 4 and XDC generation, explain in your own words:
 6. What specific evidence would prove the 10 ns clock constraint was actually recognized?
 7. Why does this XDC still not prove positive WNS/TNS or BRAM inference?
 8. Why are `set_input_delay` and `set_output_delay` still intentionally absent?
+
+---
+
+## Step 9 Update — Measured vs Predicted
+
+**Status:** MEASURED XDC RESULTS ADDED — Vivado constraint application matches the Step-3 predictions. Resource mapping, routed timing, and hardware behavior remain outside this XDC-only measurement.
+
+### 1. Measurement source
+
+The Step-7 Vivado/Tcl verification artifact was executed against the loaded design:
+
+```text
+tb/scripts/verify_basys3_xdc.tcl
+```
+
+Vivado reported:
+
+```text
+Checks executed: 59
+Errors found:    0
+
+PASS: basys3_xdc constraint database matches the approved design.
+```
+
+This is direct tool-applied evidence, not source inspection alone.
+
+---
+
+### 2. Predicted versus measured table
+
+| Quantity | Step-3 prediction | Vivado measurement | Comparison |
+|---|---:|---:|---|
+| Required constrained ports | 12 | 12 resolved | MATCH |
+| Required unconstrained ports | 0 | 0 observed in checked set | MATCH |
+| Unique package pins | 12 | 12 | MATCH |
+| I/O standard | LVCMOS33 | LVCMOS33 on all 12 | MATCH |
+| Primary clock count | 1 | 1 | MATCH |
+| Clock name | `sys_clk_pin` | `sys_clk_pin` | MATCH |
+| Clock period | 10.000 ns | 10.000 ns | MATCH |
+| Clock rising edge | 0 ns | 0.000 ns | MATCH |
+| Clock falling edge | 5 ns | 5.000 ns | MATCH |
+| Total design clocks | 1 | 1 | MATCH |
+| Expected XDC verification errors | 0 | 0 | MATCH |
+| CONFIG_VOLTAGE | 3.3 | 3.3 | MATCH |
+| CFGBVS | VCCO | VCCO | MATCH |
+
+Every quantity directly exercised by the verification script matched its prediction.
+
+---
+
+### 3. Port-resolution result
+
+The prediction was:
+
+```text
+12 required top-level port bits
+-> all must resolve exactly once
+```
+
+Measured result:
+
+```text
+clk_100mhz      object count = 1
+btn_start       object count = 1
+btn_reset       object count = 1
+led_result[0]   object count = 1
+...
+led_result[7]   object count = 1
+led_done        object count = 1
+```
+
+Therefore:
+
+```text
+12 / 12 expected port objects resolved
+```
+
+This closes the gap between XDC text intent and actual Vivado object binding.
+
+---
+
+### 4. PACKAGE_PIN result
+
+Predicted physical mapping:
+
+```text
+clk_100mhz    -> W5
+btn_start     -> U18
+btn_reset     -> U17
+
+led_result[0] -> U16
+led_result[1] -> E19
+led_result[2] -> U19
+led_result[3] -> V19
+led_result[4] -> W18
+led_result[5] -> U15
+led_result[6] -> U14
+led_result[7] -> V14
+
+led_done      -> V13
+```
+
+Vivado measured exactly the same mapping.
+
+Therefore:
+
+```text
+PACKAGE_PIN prediction accuracy = 12 / 12
+```
+
+---
+
+### 5. IOSTANDARD result
+
+Prediction:
+
+```text
+all selected board ports -> LVCMOS33
+```
+
+Measurement:
+
+```text
+12 / 12 selected ports -> LVCMOS33
+```
+
+Therefore:
+
+```text
+IOSTANDARD prediction accuracy = 12 / 12
+```
+
+No selected board port failed the intended electrical-standard check.
+
+---
+
+### 6. Unique-pin result
+
+Prediction:
+
+```text
+duplicate PACKAGE_PIN assignments = 0
+```
+
+Measurement:
+
+```text
+unique PACKAGE_PIN count = 12
+```
+
+with 12 expected mapped ports.
+
+Therefore:
+
+```text
+duplicate selected pin assignments = 0
+```
+
+This matches the Step-3 expectation.
+
+---
+
+### 7. Clock-object result
+
+Prediction:
+
+```text
+primary clock count = 1
+clock name          = sys_clk_pin
+period              = 10.000 ns
+waveform            = {0 5}
+generated clocks    = 0 expected
+```
+
+Measured:
+
+```text
+clock objects on clk_100mhz = 1
+primary clock name          = sys_clk_pin
+period                      = 10.000 ns
+rising edge                 = 0.000 ns
+falling edge                = 5.000 ns
+total design clock count    = 1
+```
+
+The frequency implied by the measured period is:
+
+```text
+f = 1 / 10 ns
+  = 100 MHz
+```
+
+Therefore the clock prediction is fully matched.
+
+---
+
+### 8. Configuration-property result
+
+Prediction:
+
+```text
+CONFIG_VOLTAGE = 3.3
+CFGBVS         = VCCO
+```
+
+Measured:
+
+```text
+CONFIG_VOLTAGE = 3.3
+CFGBVS         = VCCO
+```
+
+Therefore both configuration-property predictions matched.
+
+---
+
+### 9. Error-count result
+
+Prediction:
+
+```text
+XDC-critical verification errors = 0
+```
+
+Measured by the verification artifact:
+
+```text
+Checks executed = 59
+Errors found    = 0
+```
+
+Therefore the tested XDC constraint properties all passed.
+
+Important qualification:
+
+```text
+0 verification-script errors
+!=
+0 possible Vivado warnings of every kind
+```
+
+The measured result proves that the explicit properties queried by the script matched the approved design.
+
+---
+
+### 10. What Step 9 now establishes
+
+The following are no longer merely predictions:
+
+```text
+12 expected ports resolve
+12 approved package-pin mappings are applied
+12 selected ports use LVCMOS33
+12 package pins are unique
+one primary clock exists
+clock name = sys_clk_pin
+clock period = 10.000 ns
+clock waveform = 0 / 5 ns
+CONFIG_VOLTAGE = 3.3
+CFGBVS = VCCO
+constraint verification script reports 0 errors
+```
+
+These are now measured Vivado-applied results.
+
+---
+
+### 11. What remains unmeasured in this analysis
+
+The following Step-3/Phase-8 physical quantities remain outside the XDC measurement:
+
+```text
+final bonded-I/O utilization report value
+BRAM count
+DSP count
+LUT count
+FF count
+CARRY4 count
+BUFG count
+WNS
+TNS
+WHS
+THS
+critical path
+power
+bitstream success
+physical button operation
+physical LED operation
+```
+
+These must be collected from synthesis, implementation, bitstream generation, and board testing.
+
+---
+
+### 12. Prediction accuracy conclusion
+
+For every quantity directly checked by the Step-7 script:
+
+```text
+prediction -> measurement = MATCH
+```
+
+The measured evidence is:
+
+```text
+59 checks
+0 errors
+```
+
+So the XDC prediction model was accurate for the tested constraint properties.
+
+---
+
+### 13. Step-9 status
+
+**BASYS3 XDC MEASURED-VS-PREDICTED ANALYSIS: COMPLETE**
+
+The module may proceed to:
+
+```text
+Step 10 — /review basys3_xdc
+```
+
+provided the learner can explain the distinction between:
+
+```text
+measured XDC application
+vs
+still-unmeasured synthesis/implementation/hardware evidence
+```
