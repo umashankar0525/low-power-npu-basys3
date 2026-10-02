@@ -667,3 +667,56 @@ Before Step 7 verification-artifact generation, explain in your own words:
 8. Why do we measure from accepted core_start rather than the physical button?
 9. Why can simulation prove pipeline correctness but not timing closure?
 10. What exact post-route conditions must later prove successful 100 MHz closure?
+
+
+---
+
+## Step 7 Verification Artifact Record
+
+**Status:** COMPLETE — integration testbench updated for the pipelined timing-closure architecture.
+
+Updated artifact:
+
+```text
+tb/integration/tb_basys3_top_level.v
+```
+
+The updated testbench now explicitly verifies:
+
+```text
+partial_sum_pipe captures S0 = 10
+accumulator remains 0 before S0 consumption
+
+partial_sum_pipe captures S1 = 26
+accumulator becomes 10
+
+partial_sum_pipe captures S2 = 9
+accumulator becomes 36
+
+engine result becomes 45
+activation_out becomes 34 / 0x22
+
+exactly three paired memory requests
+request order 0 -> 1 -> 2
+exactly one raw completion event
+
+accepted core_start -> raw core_done
+= 80 ns predicted
+
+reset clears partial_sum_pipe
+reset clears accumulator
+post-reset recovery repeats the full pipeline sequence
+```
+
+The monitor samples the internal pipeline on the falling edge after the relevant rising-edge nonblocking assignments have settled. This avoids treating pre-update values as post-update state.
+
+Internal state encoding used by the verification monitor:
+
+```text
+ST_PIPE0 = 3'd2
+ST_WORD0 = 3'd3
+ST_WORD1 = 3'd4
+ST_WORD2 = 3'd5
+```
+
+The testbench does not claim physical timing closure. A zero-error behavioral run proves only the intended functional/cycle contract. Synthesis and implementation must still be rerun afterward.
