@@ -745,3 +745,429 @@ Before RTL modification, explain in your own words:
 10. Why is timing closure more plausible but still not guaranteed?
 11. Why must hold timing be rechecked?
 12. What exact values define successful 100 MHz closure?
+
+
+---
+
+## Step 9 Update — Measured Stage-2 Synthesis and Timing Closure
+
+**Role:** Performance Analyst  
+**Active Phase:** Phase 8 — Basys 3 Top-Level Integration, Physical Validation, and Final Optimization  
+**Module:** `basys3_timing_closure_stage2`  
+**Evidence:** fresh synthesis and fresh implemented timing summary for the Stage-2 product-pipelined RTL  
+**Status:** 100 MHz TIMING CLOSURE ACHIEVED.
+
+### A. Fresh Stage-2 synthesis utilization
+
+Measured:
+
+```text
+Slice LUTs      = 525
+Slice Registers = 218
+CARRY4          = 96
+DSP             = 0
+RAMB18E1        = 2
+Block RAM Tile  = 1
+Bonded IOB      = 12
+BUFG            = 1
+```
+
+The synthesized RTL contains the intended seven-state memory engine:
+
+```text
+ST_IDLE
+ST_WAIT0
+ST_PROD0
+ST_PIPE0
+ST_WORD0
+ST_WORD1
+ST_WORD2
+```
+
+and four 16-bit product registers.
+
+### B. Stage-1 versus Stage-2 resource delta
+
+Stage-1 measured baseline:
+
+```text
+LUT    = 487
+FF     = 154
+CARRY4 = 96
+DSP    = 0
+BRAM18 = 2
+IOB    = 12
+BUFG   = 1
+```
+
+Stage-2 measured:
+
+```text
+LUT    = 525
+FF     = 218
+CARRY4 = 96
+DSP    = 0
+BRAM18 = 2
+IOB    = 12
+BUFG   = 1
+```
+
+LUT delta:
+
+```text
+525 - 487 = +38 LUT
+```
+
+Percentage:
+
+```text
+38 / 487 x 100
+≈ 7.80%
+```
+
+FF delta:
+
+```text
+218 - 154 = +64 FF
+```
+
+Percentage:
+
+```text
+64 / 154 x 100
+≈ 41.56%
+```
+
+The +64 FF increase exactly matches the architectural prediction:
+
+```text
+4 product registers x 16 bits
+= 64 FF
+```
+
+No extra CARRY4, DSP, BRAM, I/O, or clock resource was required.
+
+### C. Prediction versus measured utilization
+
+Prediction:
+
+```text
+LUT ≈ 480..530
+FF  ≈ 210..225
+CARRY4 broadly near 96
+DSP = 0 expected
+RAMB18E1 = 2 expected
+IOB = 12 expected
+BUFG = 1 expected
+```
+
+Measured:
+
+```text
+LUT = 525
+FF  = 218
+CARRY4 = 96
+DSP = 0
+RAMB18E1 = 2
+IOB = 12
+BUFG = 1
+```
+
+Therefore every predicted resource fell inside or exactly on the expected range/value.
+
+### D. Fresh Stage-2 post-route timing summary
+
+Measured implementation:
+
+```text
+WNS  = +0.913 ns
+TNS  = 0.000 ns
+setup failing endpoints = 0
+
+WHS  = +0.122 ns
+THS  = 0.000 ns
+hold failing endpoints = 0
+
+WPWS = +4.500 ns
+TPWS = 0.000 ns
+pulse-width failing endpoints = 0
+```
+
+Vivado reports:
+
+```text
+All user specified timing constraints are met.
+```
+
+Therefore:
+
+```text
+setup timing       = PASS
+hold timing        = PASS
+pulse-width timing = PASS
+100 MHz closure    = PASS
+```
+
+### E. Stage-1 versus Stage-2 timing improvement
+
+Stage-1 after the first pipeline:
+
+```text
+WNS = -1.260 ns
+TNS = -9.347 ns
+setup failing endpoints = 12
+```
+
+Stage-2:
+
+```text
+WNS = +0.913 ns
+TNS = 0.000 ns
+setup failing endpoints = 0
+```
+
+WNS improvement:
+
+```text
++0.913 - (-1.260)
+= +2.173 ns
+```
+
+The setup violation was not merely reduced; it was eliminated and replaced by positive margin.
+
+TNS improvement:
+
+```text
+0 - (-9.347)
+= +9.347 ns
+```
+
+Failing endpoints:
+
+```text
+12 -> 0
+```
+
+Thus all remaining setup failures were removed by the product-register pipeline.
+
+### F. Full timing-closure progression
+
+Original pre-pipeline design:
+
+```text
+WNS = -3.453 ns
+TNS = -99.753 ns
+43 failing endpoints
+```
+
+After first pipeline:
+
+```text
+WNS = -1.260 ns
+TNS = -9.347 ns
+12 failing endpoints
+```
+
+After second pipeline:
+
+```text
+WNS = +0.913 ns
+TNS = 0.000 ns
+0 failing endpoints
+```
+
+Net WNS improvement from the original architecture:
+
+```text
++0.913 - (-3.453)
+= +4.366 ns
+```
+
+The design moved from a significant setup violation to positive setup margin.
+
+### G. Hold timing
+
+Stage-1:
+
+```text
+WHS = +0.131 ns
+```
+
+Stage-2:
+
+```text
+WHS = +0.122 ns
+```
+
+Difference:
+
+```text
+0.122 - 0.131
+= -0.009 ns
+```
+
+Hold margin decreased slightly by 9 ps, but remains positive.
+
+Therefore the new pipeline did not create a hold violation.
+
+### H. Pulse-width timing
+
+Stage-1:
+
+```text
+WPWS = +4.500 ns
+TPWS = 0
+```
+
+Stage-2:
+
+```text
+WPWS = +4.500 ns
+TPWS = 0
+```
+
+No degradation occurred.
+
+### I. BRAM and multiplier implementation
+
+The two operand memories remain implemented as Block RAM:
+
+```text
+activation_data_reg 512x32 -> Block RAM
+weight_data_reg     512x32 -> Block RAM
+```
+
+The product pipeline did not change memory count.
+
+The four INT8 multipliers still map without DSP blocks:
+
+```text
+DSP = 0
+```
+
+Therefore the timing closure was achieved through architectural pipelining, not through increased DSP usage.
+
+### J. Behavioral versus physical result
+
+Behavioral XSim already measured:
+
+```text
+latency = 9 cycles = 90 ns
+products aligned correctly
+S0 = 10
+S1 = 26
+S2 = 9
+result = 45
+activation_out = 34 / 0x22
+reset/recovery PASS
+```
+
+Fresh implementation now additionally proves:
+
+```text
+the placed-and-routed design meets the 10 ns clock constraint
+```
+
+Thus both required proof domains are now satisfied:
+
+```text
+functional/cycle correctness -> PASS
+physical timing correctness  -> PASS
+```
+
+### K. Timing-closure tradeoff
+
+Measured architectural cost relative to Stage-1:
+
+```text
++64 FF
++38 LUT
++10 ns transaction latency
+```
+
+Measured timing benefit:
+
+```text
+WNS:
+-1.260 ns -> +0.913 ns
+
+TNS:
+-9.347 ns -> 0
+
+failing setup endpoints:
+12 -> 0
+```
+
+This is the expected hardware tradeoff:
+
+```text
+more sequential storage
++
+one additional pipeline stage
+->
+shorter combinational path
+->
+100 MHz timing closure
+```
+
+### L. Final Stage-2 physical status
+
+```text
+Behavioral simulation        PASS
+Product-pipeline alignment   PASS
+Arithmetic result            PASS
+90 ns latency                PASS
+Reset/recovery               PASS
+
+Fresh synthesis              PASS
+LUT / FF measured            COMPLETE
+BRAM inference               PASS
+Fresh implementation         PASS
+
+Setup timing                 PASS
+Hold timing                  PASS
+Pulse-width timing           PASS
+
+100 MHz timing closure       ACHIEVED
+```
+
+### M. Remaining reporting detail
+
+The timing summary is sufficient to prove 100 MHz closure.
+
+A detailed new worst-path report has not yet been supplied, so the exact final critical-path source, destination, logic levels, logic delay, and route delay are not recorded here.
+
+Those details are useful for final design-review documentation but are not required to establish that the 10 ns constraint is met, because:
+
+```text
+WNS > 0
+TNS = 0
+0 setup failing endpoints
+```
+
+already prove setup closure at the constrained clock.
+
+### N. Step-9 conclusion
+
+The second timing-closure iteration achieved the design goal.
+
+Final measured timing:
+
+```text
+WNS  = +0.913 ns
+TNS  = 0
+WHS  = +0.122 ns
+THS  = 0
+WPWS = +4.500 ns
+TPWS = 0
+```
+
+The 100 MHz clock requirement is now physically satisfied.
+
+The Stage-2 pipeline is therefore both:
+
+```text
+functionally verified
+and
+post-route timing verified
+```
