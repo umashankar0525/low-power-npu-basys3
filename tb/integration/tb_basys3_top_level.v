@@ -2,11 +2,17 @@
 
 // -----------------------------------------------------------------------------
 // Integration testbench: basys3_top_level
-// Phase 8 — Basys 3 Top-Level Integration
+// Phase 8 — Basys 3 Top-Level Integration / Timing Closure
 //
-// Step-8 debug revision:
+// Timing-closure verification revision:
+//   - memory_interface_dataflow now contains partial_sum_pipe.
+//   - expected accepted-start-to-raw-done latency is 80 ns (8 cycles).
+//   - internal pipeline progression S0=10, S1=26, S2=9 is checked.
+//   - accumulator progression 0 -> 10 -> 36 -> final result 45 is checked.
+//
+// Earlier reset-debug context:
 //   The first XSim run showed that a debounced physical reset cannot be
-//   expected to abort a 70 ns transaction before normal completion. The tests
+//   expected to abort a 80 ns transaction before normal completion. The tests
 //   therefore separate two contracts:
 //
 //     1) physical reset button -> synchronizer/debounce -> eventual state clear
@@ -36,6 +42,13 @@ module tb_basys3_top_level;
     integer raw_done_count;
     integer request_count;
     integer busy_mask_checks;
+    integer pipeline_capture_count;
+
+    reg pipeline_seen_s0;
+    reg pipeline_seen_s1;
+    reg pipeline_seen_s2;
+    reg accumulator_seen_10;
+    reg accumulator_seen_36;
 
     reg        track_transaction;
     reg        pending_read;
@@ -115,6 +128,12 @@ module tb_basys3_top_level;
             raw_done_count          = 0;
             request_count           = 0;
             busy_mask_checks        = 0;
+            pipeline_capture_count  = 0;
+            pipeline_seen_s0        = 1'b0;
+            pipeline_seen_s1        = 1'b0;
+            pipeline_seen_s2        = 1'b0;
+            accumulator_seen_10     = 1'b0;
+            accumulator_seen_36     = 1'b0;
             pending_read            = 1'b0;
             pending_activation_word = 32'd0;
             pending_weight_word     = 32'd0;
@@ -205,6 +224,10 @@ module tb_basys3_top_level;
                   "core_busy was not low after synchronous reset sampling");
             check(dut.core_done === 1'b0,
                   "core_done was not low after synchronous reset sampling");
+            check(dut.u_convolution_integration.u_memory_interface_dataflow.partial_sum_pipe === 32'sd0,
+                  "partial_sum_pipe was not cleared by reset");
+            check(dut.u_convolution_integration.u_memory_interface_dataflow.accumulator === 32'sd0,
+                  "accumulator was not cleared by reset");
             check(led_result === 8'd0,
                   "led_result was not cleared by reset");
             check(led_done === 1'b0,
@@ -282,6 +305,66 @@ module tb_basys3_top_level;
             end
         end else begin
             pending_read = 1'b0;
+        end
+    end
+
+    // -------------------------------------------------------------------------
+    // Timing-closure pipeline monitor
+    //
+    // Sample on the falling edge so all nonblocking updates from the preceding
+    // rising edge have settled. The internal state values are:
+    //   ST_PIPE0 = 2, ST_WORD0 = 3, ST_WORD1 = 4, ST_WORD2 = 5.
+    // -------------------------------------------------------------------------
+    always @(negedge clk_100mhz) begin
+        if (track_transaction && !dut.reset_level) begin
+            case (dut.u_convolution_integration.u_memory_interface_dataflow.state)
+                3'd3: begin
+                    // We have just left ST_PIPE0: S0 must be registered.
+                    if (!pipeline_seen_s0) begin
+                        check(dut.u_convolution_integration.u_memory_interface_dataflow.partial_sum_pipe === 32'sd10,
+                              "partial_sum_pipe did not capture S0=10");
+                        check(dut.u_convolution_integration.u_memory_interface_dataflow.accumulator === 32'sd0,
+                              "accumulator changed before registered S0 was consumed");
+                        pipeline_seen_s0 = 1'b1;
+                        pipeline_capture_count = pipeline_capture_count + 1;
+                    end
+                end
+
+                3'd4: begin
+                    // We have just left ST_WORD0: S0 consumed, S1 registered.
+                    if (!pipeline_seen_s1) begin
+                        check(dut.u_convolution_integration.u_memory_interface_dataflow.accumulator === 32'sd10,
+                              "accumulator did not become 10 after consuming S0");
+                        check(dut.u_convolution_integration.u_memory_interface_dataflow.partial_sum_pipe === 32'sd26,
+                              "partial_sum_pipe did not capture S1=26");
+                        accumulator_seen_10 = 1'b1;
+                        pipeline_seen_s1 = 1'b1;
+                        pipeline_capture_count = pipeline_capture_count + 1;
+                    end
+                end
+
+                3'd5: begin
+                    // We have just left ST_WORD1: S1 consumed, S2 registered.
+                    if (!pipeline_seen_s2) begin
+                        check(dut.u_convolution_integration.u_memory_interface_dataflow.accumulator === 32'sd36,
+                              "accumulator did not become 36 after consuming S1");
+                        check(dut.u_convolution_integration.u_memory_interface_dataflow.partial_sum_pipe === 32'sd9,
+                              "partial_sum_pipe did not capture S2=9");
+                        accumulator_seen_36 = 1'b1;
+                        pipeline_seen_s2 = 1'b1;
+                        pipeline_capture_count = pipeline_capture_count + 1;
+                    end
+                end
+
+                3'd0: begin
+                    // If a tracked transaction has completed, the engine has
+                    // returned to IDLE. result must retain the full sum 45.
+                    if ((raw_done_count > 0) && pipeline_seen_s2) begin
+                        check(dut.u_convolution_integration.u_memory_interface_dataflow.result === 32'sd45,
+                              "engine result did not retain final convolution sum 45");
+                    end
+                end
+            endcase
         end
     end
 
@@ -368,12 +451,20 @@ module tb_basys3_top_level;
             "core_done did not occur for the stable button transaction");
 
         #1;
-        check((raw_done_time - accepted_start_time) == 70,
-              "accepted core_start to raw core_done latency was not 70 ns");
+        check((raw_done_time - accepted_start_time) == 80,
+              "accepted core_start to raw core_done latency was not 80 ns");
         check(led_result === 8'd34,
               "board-visible result was not 34 at raw core completion");
         check(request_count == 3,
               "transaction did not issue exactly three paired operand reads");
+        check(pipeline_capture_count == 3,
+              "transaction did not capture exactly S0, S1, and S2");
+        check(pipeline_seen_s0 && pipeline_seen_s1 && pipeline_seen_s2,
+              "not all expected partial sums were observed");
+        check(accumulator_seen_10 && accumulator_seen_36,
+              "expected accumulator progression 10 -> 36 was not observed");
+        check(dut.u_convolution_integration.u_memory_interface_dataflow.result === 32'sd45,
+              "engine final result was not 45");
         check(accepted_start_count == 1,
               "held button created more than one accepted core_start");
         check(raw_done_count == 1,
@@ -407,7 +498,7 @@ module tb_basys3_top_level;
         // ---------------------------------------------------------------------
         // TEST 4A — Physical reset pressed while transaction is active
         //
-        // This test does NOT require the 70 ns transaction to be aborted. It
+        // This test does NOT require the 80 ns transaction to be aborted. It
         // verifies that the physical button path eventually creates reset_level
         // and that the next synchronous core edge clears architectural state.
         // ---------------------------------------------------------------------
@@ -430,7 +521,7 @@ module tb_basys3_top_level;
             "physical reset did not debounce high during active transaction");
 
         // By this time raw_done may legitimately have occurred because the
-        // qualified physical reset path is slower than the 70 ns computation.
+        // qualified physical reset path is slower than the 80 ns computation.
         check(raw_done_count <= 1,
               "physical-reset test observed more than one raw completion");
 
@@ -479,7 +570,7 @@ module tb_basys3_top_level;
         check(dut.core_busy === 1'b1,
               "core was not busy after engine-launch edge");
 
-        // Assert the already-clean synchronous reset before normal E7 completion.
+        // Assert the already-clean synchronous reset before normal pipelined completion.
         @(negedge clk_100mhz);
         btn_start = 1'b0;
         force dut.reset_level = 1'b1;
@@ -493,6 +584,10 @@ module tb_basys3_top_level;
               "clean reset_level did not abort core_busy");
         check(dut.core_done === 1'b0,
               "clean reset_level allowed core_done during abort edge");
+        check(dut.u_convolution_integration.u_memory_interface_dataflow.partial_sum_pipe === 32'sd0,
+              "clean reset_level did not clear partial_sum_pipe");
+        check(dut.u_convolution_integration.u_memory_interface_dataflow.accumulator === 32'sd0,
+              "clean reset_level did not clear accumulator");
         check(led_result === 8'd0,
               "clean reset_level did not clear architectural result");
         check(led_done === 1'b0,
@@ -530,12 +625,20 @@ module tb_basys3_top_level;
             "post-reset transaction did not complete");
 
         #1;
-        check((raw_done_time - accepted_start_time) == 70,
-              "post-reset accepted-start to done latency was not 70 ns");
+        check((raw_done_time - accepted_start_time) == 80,
+              "post-reset accepted-start to done latency was not 80 ns");
         check(led_result === 8'd34,
               "post-reset board result was not 34");
         check(request_count == 3,
               "post-reset transaction did not issue exactly three operand reads");
+        check(pipeline_capture_count == 3,
+              "post-reset transaction did not capture all three partial sums");
+        check(pipeline_seen_s0 && pipeline_seen_s1 && pipeline_seen_s2,
+              "post-reset S0/S1/S2 pipeline progression was incomplete");
+        check(accumulator_seen_10 && accumulator_seen_36,
+              "post-reset accumulator progression 10 -> 36 was not observed");
+        check(dut.u_convolution_integration.u_memory_interface_dataflow.result === 32'sd45,
+              "post-reset engine final result was not 45");
 
         @(posedge clk_100mhz);
         #1;
@@ -553,7 +656,7 @@ module tb_basys3_top_level;
         // Final result
         // ---------------------------------------------------------------------
         if (error_count == 0)
-            $display("PASS: tb_basys3_top_level completed with zero errors");
+            $display("PASS: tb_basys3_top_level timing-closure verification completed with zero errors");
         else
             $display("FAIL: tb_basys3_top_level completed with %0d errors", error_count);
 
