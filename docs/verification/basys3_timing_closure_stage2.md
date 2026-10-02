@@ -669,3 +669,91 @@ Before Step 7 testbench modification, explain in your own words:
 8. Why must product_pipe registers be explicitly checked after reset?
 9. Why can simulation prove product/partial-sum alignment but not timing closure?
 10. What post-route conditions define successful Stage-2 timing closure?
+
+
+---
+
+## Step 7 Implementation Record
+
+**Status:** COMPLETE — integration testbench updated for the Stage-2 product pipeline.
+
+Modified:
+
+```text
+tb/integration/tb_basys3_top_level.v
+```
+
+Added scoreboard state:
+
+```text
+product_capture_count
+product_seen_w0
+product_seen_w1
+product_seen_w2
+```
+
+The falling-edge internal monitor now observes post-NBA state for the seven-state engine:
+
+```text
+state 3:
+word-0 products = 1,2,3,4
+partial_sum_pipe = 0
+accumulator = 0
+
+state 4:
+word-1 products = 5,6,7,8
+partial_sum_pipe = 10
+accumulator = 0
+
+state 5:
+word-2 products = 9,0,0,0
+partial_sum_pipe = 26
+accumulator = 10
+
+state 6:
+partial_sum_pipe = 9
+accumulator = 36
+
+return to IDLE after completion:
+result = 45
+```
+
+Nominal and post-reset latency assertions were changed:
+
+```text
+80 ns -> 90 ns
+```
+
+Reset verification now explicitly checks:
+
+```text
+product_pipe0 = 0
+product_pipe1 = 0
+product_pipe2 = 0
+product_pipe3 = 0
+partial_sum_pipe = 0
+accumulator = 0
+```
+
+Nominal and post-reset transactions now require:
+
+```text
+product_capture_count = 3
+product_seen_w0 = 1
+product_seen_w1 = 1
+product_seen_w2 = 1
+
+pipeline_capture_count = 3
+S0/S1/S2 all seen
+
+accumulator 10 and 36 seen
+result = 45
+activation_out = 34
+exactly 3 requests
+exactly 1 completion
+latency = 90 ns
+```
+
+The testbench still preserves the existing button debounce, busy-mask, physical reset, clean-reset abort, done-latch, and post-reset recovery tests.
+
+Behavioral simulation is required next. No physical timing claim is made by this testbench change.
