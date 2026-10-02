@@ -649,3 +649,81 @@ Before Step 3 /analyze basys3_timing_closure_stage2, explain in your own words:
 8. Why should the new latency become 9 cycles / 90 ns?
 9. Which resources should remain unchanged?
 10. Why must fresh synthesis and post-route STA still decide whether this second split actually closes timing?
+
+
+---
+
+## Step 5 Implementation Record
+
+**Status:** COMPLETE — Stage-2 RTL modification implemented.
+
+Modified file:
+
+```text
+rtl/compute/memory_interface_dataflow.v
+```
+
+Implemented changes:
+
+```text
+added ST_PROD0
+added product_pipe0 : signed [15:0]
+added product_pipe1 : signed [15:0]
+added product_pipe2 : signed [15:0]
+added product_pipe3 : signed [15:0]
+
+reduction tree now consumes registered products
+partial_sum_pipe remains between reduction and accumulator
+three BRAM requests preserved
+request order 0 -> 1 -> 2 preserved
+external module interface unchanged
+INT32 accumulation preserved
+final arithmetic target remains 45 -> 34 / 0x22
+```
+
+Implemented state sequence:
+
+```text
+ST_IDLE
+-> ST_WAIT0
+-> ST_PROD0
+-> ST_PIPE0
+-> ST_WORD0
+-> ST_WORD1
+-> ST_WORD2
+-> ST_IDLE
+```
+
+Intended pipeline timing:
+
+```text
+ST_PROD0:
+product_pipe <= products(word 0)
+
+ST_PIPE0:
+partial_sum_pipe <= S0
+product_pipe     <= products(word 1)
+
+ST_WORD0:
+accumulator      <= S0
+partial_sum_pipe <= S1
+product_pipe     <= products(word 2)
+
+ST_WORD1:
+accumulator      <= S0 + S1
+partial_sum_pipe <= S2
+
+ST_WORD2:
+result <= S0 + S1 + S2
+done   <= 1
+```
+
+No other RTL module or XDC file was modified in this step.
+
+The predicted accepted-start-to-done latency is now:
+
+```text
+9 cycles = 90 ns
+```
+
+This must be verified behaviorally before fresh synthesis and implementation are used for final timing analysis.
