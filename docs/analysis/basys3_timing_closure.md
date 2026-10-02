@@ -1287,3 +1287,552 @@ at the unchanged:
 100 MHz
 10 ns period
 ```
+
+
+---
+
+## Step 9 Update — Fresh Post-Pipeline Physical Measurements
+
+**Role:** Performance Analyst  
+**Active Phase:** Phase 8 — Basys 3 Top-Level Integration, Physical Validation, and Final Optimization  
+**Module:** `basys3_timing_closure`  
+**Evidence:** fresh synthesis and fresh implemented timing report for the modified pipelined RTL  
+**Status:** PHYSICAL TIMING IMPROVED SUBSTANTIALLY, BUT 100 MHz SETUP CLOSURE STILL FAILS.
+
+### A. Fresh synthesis utilization
+
+Measured post-pipeline synthesis:
+
+```text
+Slice LUTs      = 487
+Slice Registers = 154
+CARRY4          = 96
+DSP             = 0
+RAMB18E1        = 2
+Block RAM Tile  = 1
+Bonded IOB      = 12
+BUFG            = 1
+```
+
+Previous pre-pipeline baseline:
+
+```text
+LUT       = 465
+FF        = 138
+CARRY4    = 96
+DSP       = 0
+RAMB18E1  = 2
+IOB       = 12
+BUFG      = 1
+```
+
+Measured deltas:
+
+```text
+LUT:
+487 - 465 = +22
+percentage increase = 22 / 465 x 100
+                    ≈ 4.73%
+
+FF:
+154 - 138 = +16
+percentage increase = 16 / 138 x 100
+                    ≈ 11.59%
+
+CARRY4:
+96 - 96 = 0
+
+DSP:
+0 - 0 = 0
+
+RAMB18E1:
+2 - 2 = 0
+
+IOB:
+12 - 12 = 0
+
+BUFG:
+1 - 1 = 0
+```
+
+### B. Why FF increased by only 16 rather than exactly 32
+
+The RTL added a signed 32-bit `partial_sum_pipe`.
+
+However, only 18 bits of the reduced partial sum are independent.
+
+The upper sign-extension bits are copies of the sign bit.
+
+Vivado merged:
+
+```text
+partial_sum_pipe[18]
+through
+partial_sum_pipe[31]
+```
+
+into the physical storage for bit 17.
+
+Thus approximately:
+
+```text
+32 RTL bits
+- 14 redundant sign-extension bits
+= 18 unique datapath bits
+```
+
+The memory-interface FSM also changed physical encoding.
+
+Before the redesign, the five-state memory FSM had been synthesized one-hot.
+
+After the redesign, Vivado reports the six-state FSM using sequential encoding:
+
+```text
+ST_IDLE  = 000
+ST_WAIT0 = 001
+ST_PIPE0 = 010
+ST_WORD0 = 011
+ST_WORD1 = 100
+ST_WORD2 = 101
+```
+
+Therefore the physical state storage changed approximately from:
+
+```text
+5 one-hot FF
+to
+3 binary FF
+```
+
+saving roughly two FF.
+
+Combining:
+
+```text
++18 effective pipeline FF
+- 2 FSM FF
+≈ +16 net FF
+```
+
+which exactly matches:
+
+```text
+154 - 138 = +16
+```
+
+This is a strong example of why RTL register width and synthesized FF count are not always identical.
+
+### C. Fresh post-route timing summary
+
+Measured implemented timing:
+
+```text
+WNS  = -1.260 ns
+TNS  = -9.347 ns
+setup failing endpoints = 12
+total setup endpoints   = 397
+
+WHS  = +0.131 ns
+THS  = 0.000 ns
+hold failing endpoints = 0
+
+WPWS = +4.500 ns
+TPWS = 0.000 ns
+pulse-width failing endpoints = 0
+```
+
+Therefore:
+
+```text
+setup timing       = FAIL
+hold timing        = PASS
+pulse-width timing = PASS
+```
+
+### D. Before-versus-after setup timing
+
+Pre-pipeline:
+
+```text
+WNS = -3.453 ns
+TNS = -99.753 ns
+failing endpoints = 43
+```
+
+Post-pipeline:
+
+```text
+WNS = -1.260 ns
+TNS = -9.347 ns
+failing endpoints = 12
+```
+
+WNS improvement:
+
+```text
+-1.260 - (-3.453)
+= +2.193 ns
+```
+
+The setup deficit magnitude reduced from:
+
+```text
+3.453 ns
+to
+1.260 ns
+```
+
+Reduction:
+
+```text
+(3.453 - 1.260) / 3.453 x 100
+≈ 63.51%
+```
+
+TNS magnitude reduced from:
+
+```text
+99.753 ns
+to
+9.347 ns
+```
+
+Improvement in TNS magnitude:
+
+```text
+99.753 - 9.347
+= 90.406 ns
+```
+
+Relative reduction:
+
+```text
+90.406 / 99.753 x 100
+≈ 90.63%
+```
+
+Failing endpoints reduced:
+
+```text
+43 -> 12
+delta = -31
+```
+
+Relative reduction:
+
+```text
+31 / 43 x 100
+≈ 72.09%
+```
+
+Therefore the pipeline materially improved timing, exactly as predicted, but did not completely close the 100 MHz requirement.
+
+### E. Critical-path migration
+
+The old worst path was:
+
+```text
+BRAM activation output
+-> multiply/reduction
+-> accumulator addition
+-> accumulator_reg
+```
+
+The new worst path is:
+
+```text
+u_operand_bram_dual_read/activation_data_reg
+->
+u_convolution_integration/
+u_memory_interface_dataflow/
+partial_sum_pipe_reg[17]/D
+```
+
+This is precisely the predicted **Stage A** candidate:
+
+```text
+BRAM
+-> multiply/reduce
+-> partial_sum_pipe
+```
+
+Therefore the architectural split worked as intended:
+
+```text
+the old BRAM-to-accumulator path disappeared
+```
+
+and the new bottleneck is now the first pipeline stage itself.
+
+### F. New critical-path delay
+
+Measured new critical path:
+
+```text
+requirement      = 10.000 ns
+data path delay  = 11.289 ns
+logic delay      = 6.813 ns
+route delay      = 4.476 ns
+logic levels     = 13
+CARRY4           = 7
+LUT2             = 2
+LUT3             = 2
+LUT6             = 2
+```
+
+Check:
+
+```text
+6.813 + 4.476
+= 11.289 ns
+```
+
+Delay percentages:
+
+```text
+logic:
+6.813 / 11.289 x 100
+≈ 60.35%
+
+route:
+4.476 / 11.289 x 100
+≈ 39.65%
+```
+
+These match the implemented timing report.
+
+### G. Critical-path improvement from the pipeline
+
+Old path:
+
+```text
+data delay   = 13.433 ns
+logic levels = 17
+CARRY4       ≈ 10
+```
+
+New path:
+
+```text
+data delay   = 11.289 ns
+logic levels = 13
+CARRY4       = 7
+```
+
+Data-delay reduction:
+
+```text
+13.433 - 11.289
+= 2.144 ns
+```
+
+Relative reduction:
+
+```text
+2.144 / 13.433 x 100
+≈ 15.96%
+```
+
+Logic-level reduction:
+
+```text
+17 - 13
+= 4 levels
+```
+
+CARRY4 reduction on the worst path:
+
+```text
+10 - 7
+= 3 CARRY4 stages
+```
+
+The register split therefore shortened the critical arithmetic chain, but the Stage-A multiply/reduction path is still too long for 10 ns.
+
+### H. Logic-delay and route-delay changes
+
+Old:
+
+```text
+logic delay = 8.067 ns
+route delay = 5.366 ns
+```
+
+New:
+
+```text
+logic delay = 6.813 ns
+route delay = 4.476 ns
+```
+
+Logic-delay improvement:
+
+```text
+8.067 - 6.813
+= 1.254 ns
+```
+
+Route-delay improvement:
+
+```text
+5.366 - 4.476
+= 0.890 ns
+```
+
+Both logic and routing improved.
+
+The ratio remains roughly:
+
+```text
+60% logic
+40% route
+```
+
+so the remaining failure is still primarily architectural/logic-depth related rather than purely a routing accident.
+
+### I. Approximate current frequency scale
+
+Using the current 10 ns requirement and WNS:
+
+```text
+approximate effective minimum period
+≈ 10 ns + 1.260 ns
+≈ 11.260 ns
+```
+
+Approximate frequency:
+
+```text
+1 / 11.260 ns
+≈ 88.81 MHz
+```
+
+This is only an approximate interpretation of the current routed result.
+
+It is not a guaranteed Fmax and it does not replace a dedicated maximum-frequency analysis.
+
+### J. Resource prediction comparison
+
+Step-3 FF prediction:
+
+```text
+157..171 FF
+```
+
+Measured:
+
+```text
+154 FF
+```
+
+The prediction was slightly high by:
+
+```text
+157 - 154 = 3 FF
+```
+
+The reason is now understood:
+
+```text
+sign-extension register merging
++
+more compact sequential FSM encoding
+```
+
+Other resource predictions:
+
+```text
+DSP = 0 expected       -> measured 0
+RAMB18E1 = 2 expected -> measured 2
+IOB = 12 expected     -> measured 12
+BUFG = 1 expected     -> measured 1
+CARRY4 broadly similar -> measured exactly 96
+```
+
+These all matched.
+
+LUT prediction was “similar with modest variation.”
+
+Measured:
+
+```text
+465 -> 487
+delta +22
++4.73%
+```
+
+This qualifies as a modest change.
+
+### K. Timing prediction comparison
+
+Predicted:
+
+```text
+old combined BRAM-to-accumulator path should disappear
+new worst path likely Stage A or another secondary arithmetic path
+WNS should improve
+TNS magnitude should decrease
+failing endpoints should decrease
+closure not guaranteed
+```
+
+Measured:
+
+```text
+old combined path disappeared        MATCH
+new worst path = Stage A             MATCH
+WNS improved                         MATCH
+TNS magnitude decreased strongly     MATCH
+failing endpoints decreased          MATCH
+100 MHz still fails                  allowed by prediction
+```
+
+The timing prediction was therefore qualitatively accurate.
+
+### L. Current physical status
+
+```text
+Behavioral pipeline verification  PASS
+Fresh synthesis                  PASS
+Fresh utilization                MEASURED
+BRAM inference                   CONFIRMED
+Fresh implementation             COMPLETE
+Post-route hold                  PASS
+Post-route pulse width           PASS
+Post-route setup                 FAIL
+100 MHz timing closure           NOT ACHIEVED
+```
+
+### M. Engineering conclusion
+
+The first pipeline stage was beneficial but insufficient.
+
+The old bottleneck:
+
+```text
+BRAM
+-> multiply/reduction
+-> accumulator
+```
+
+has been successfully split.
+
+The remaining bottleneck is now:
+
+```text
+BRAM
+-> multiply/reduction
+-> partial_sum_pipe
+```
+
+with:
+
+```text
+WNS = -1.260 ns
+13 logic levels
+7 CARRY4 on the worst path
+```
+
+Therefore the next timing-closure iteration should target **Stage A**, likely by introducing another justified sequential boundary within the multiply/reduction path, rather than changing the XDC or accumulator stage.
+
+No RTL change should be made until that second timing-closure iteration goes through teaching/design/prediction again.
