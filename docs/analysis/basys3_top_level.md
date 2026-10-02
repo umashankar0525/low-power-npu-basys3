@@ -1817,3 +1817,391 @@ critical hold path if relevant
 ```
 
 Only that evidence can establish whether the fully integrated top-level design actually closes at the 100 MHz / 10 ns requirement.
+
+
+---
+
+## Step 9 Update — Final Post-Route Timing Measurement
+
+**Role:** Performance Analyst  
+**Active Phase:** Phase 8 — Basys 3 Top-Level Integration, Physical Validation, and Final Optimization  
+**Module:** `basys3_top_level`  
+**Evidence type:** implemented / routed timing report  
+**Status:** TIMING FAIL at 100 MHz — setup timing is violated; hold timing passes.
+
+### A. Measured timing summary
+
+Vivado implemented timing summary reports:
+
+```text
+WNS  = -3.453 ns
+TNS  = -99.753 ns
+setup failing endpoints = 43
+setup total endpoints   = 352
+
+WHS  = +0.197 ns
+THS  = 0.000 ns
+hold failing endpoints = 0
+hold total endpoints   = 352
+
+WPWS = +4.500 ns
+TPWS = 0.000 ns
+pulse-width failing endpoints = 0
+```
+
+Therefore:
+
+```text
+setup timing = FAIL
+hold timing  = PASS
+pulse width  = PASS
+```
+
+### B. Why WNS = -3.453 ns means 100 MHz fails
+
+The system clock requirement is:
+
+```text
+Tclk = 10.000 ns
+```
+
+Worst setup slack is:
+
+```text
+WNS = -3.453 ns
+```
+
+By definition:
+
+```text
+slack = required time - arrival time
+```
+
+Negative slack means the data arrives too late.
+
+The worst path therefore misses the current requirement by:
+
+```text
+3.453 ns
+```
+
+An approximate minimum period for this routed result is:
+
+```text
+Tmin ≈ 10.000 ns + 3.453 ns
+     ≈ 13.453 ns
+```
+
+Corresponding approximate maximum frequency:
+
+```text
+Fmax ≈ 1 / 13.453 ns
+     ≈ 74.33 MHz
+```
+
+This is only an estimate from the current routed result. A restructured or re-routed design can change the critical path and therefore change the achievable frequency.
+
+### C. Total negative slack
+
+Measured:
+
+```text
+TNS = -99.753 ns
+```
+
+This means the setup failure is not isolated to one endpoint.
+
+Vivado reports:
+
+```text
+43 failing setup endpoints
+```
+
+Therefore the problem is structurally broader than a single marginal path.
+
+### D. Critical setup path
+
+The worst setup path is reported as:
+
+```text
+source:
+u_operand_bram_dual_read/activation_data_reg/CLKARDCLK
+
+destination:
+u_convolution_integration/
+u_memory_interface_dataflow/
+accumulator_reg[31]/D
+```
+
+Path group:
+
+```text
+sys_clk_pin
+```
+
+Clock relationship:
+
+```text
+rise -> rise
+```
+
+Requirement:
+
+```text
+10.000 ns
+```
+
+Measured data path delay:
+
+```text
+13.433 ns
+```
+
+Breakdown:
+
+```text
+logic delay = 8.067 ns
+route delay = 5.366 ns
+total       = 13.433 ns
+```
+
+Check:
+
+```text
+8.067 + 5.366
+= 13.433 ns
+```
+
+Percentage contribution:
+
+```text
+logic fraction
+= 8.067 / 13.433
+≈ 60.05%
+
+route fraction
+= 5.366 / 13.433
+≈ 39.95%
+```
+
+Therefore the failure is dominated by logic depth, but routing delay is also substantial.
+
+### E. Logic depth of the critical path
+
+Vivado reports:
+
+```text
+logic levels = 17
+```
+
+with approximately:
+
+```text
+CARRY4 = 10
+LUT2   = 3
+LUT3   = 2
+LUT6   = 2
+```
+
+The path begins at a block-RAM output and ends at the accumulator register.
+
+Architecturally, this means the current implementation effectively places too much arithmetic between:
+
+```text
+BRAM read output
+-> memory-interface arithmetic / accumulation
+-> accumulator register
+```
+
+inside one 10 ns cycle.
+
+### F. Why the BRAM timing warning mattered
+
+During synthesis Vivado warned that the inferred block RAM output timing might be sub-optimal because no optional output register was merged into the BRAM.
+
+The post-route critical path now starts at:
+
+```text
+RAMB18E1 activation_data_reg
+```
+
+and terminates at:
+
+```text
+accumulator_reg[31]
+```
+
+Therefore the earlier warning correctly identified a real timing-risk area.
+
+This does not mean BRAM inference was wrong. BRAM inference remains correct.
+
+The issue is:
+
+```text
+BRAM output
+-> deep arithmetic / carry chain
+-> accumulator register
+```
+
+is too long for 10 ns in the current implementation.
+
+### G. Hold timing
+
+Measured:
+
+```text
+WHS = +0.197 ns
+THS = 0.000 ns
+hold failing endpoints = 0
+```
+
+Therefore:
+
+```text
+hold timing = PASS
+```
+
+No hold-fix architectural work is indicated by this report.
+
+### H. Pulse-width timing
+
+Measured:
+
+```text
+WPWS = +4.500 ns
+TPWS = 0.000 ns
+failing endpoints = 0
+```
+
+Therefore:
+
+```text
+pulse-width timing = PASS
+```
+
+### I. Check Timing messages
+
+Vivado reports high-severity timing checks for:
+
+```text
+no_output_delay = 8
+no_input_delay  = 2
+```
+
+These must be interpreted in context.
+
+The two pushbuttons are asynchronous human inputs and intentionally do not use synchronous external input-delay constraints.
+
+The LEDs are human-visible outputs and intentionally do not use synchronous external output-delay constraints.
+
+Therefore these messages are not the cause of the internal setup failure.
+
+The actual failing setup path is an intra-clock `sys_clk_pin` path from BRAM to the accumulator register.
+
+### J. Comparison against Phase-8 timing prediction
+
+Earlier Phase-8 prediction:
+
+```text
+100 MHz routed setup/hold closure expected
+```
+
+Measured:
+
+```text
+setup WNS = -3.453 ns
+setup TNS = -99.753 ns
+43 setup endpoints failing
+
+hold WHS = +0.197 ns
+hold THS = 0
+0 hold endpoints failing
+```
+
+Therefore:
+
+```text
+setup prediction = WRONG
+hold prediction  = MATCH
+```
+
+This is exactly why implementation measurements were required rather than assuming the result from the earlier core-only baseline.
+
+### K. Relationship to the earlier core-only result
+
+Earlier core-only implementation had positive setup slack.
+
+The final board-top design differs because it adds:
+
+```text
+real BRAM operand storage
+board wrapper logic
+final M_INT / FRAC_BITS configuration
+different physical placement
+different routing
+additional integration paths
+```
+
+The current critical path specifically crosses from a real block RAM into the accumulator path.
+
+Therefore the earlier core-only timing result cannot be used as physical proof for the final board-top design.
+
+### L. Current physical-validation status
+
+```text
+Behavioral simulation       PASS
+XDC verification            PASS
+Synthesis                   PASS
+Resource utilization        MEASURED
+BRAM inference              CONFIRMED
+IOB count                   CONFIRMED
+BUFG count                  CONFIRMED
+Implementation / P&R        COMPLETE
+Post-route STA              FAIL at 100 MHz
+Hold timing                 PASS
+Pulse-width timing          PASS
+Bitstream sign-off          BLOCKED by timing failure
+Hardware sign-off           PENDING
+```
+
+### M. Required architectural response
+
+Because the project objective is architectural mastery, the correct response is not to ignore the timing violation or simply lower the clock without analysis.
+
+The critical timing problem must first be understood as:
+
+```text
+RAMB18E1 output
+-> deep combinational arithmetic
+-> 10 CARRY4-heavy chain
+-> accumulator_reg
+```
+
+The next design task should evaluate architectural options such as:
+
+```text
+adding a pipeline boundary after BRAM output
+reducing arithmetic depth per cycle
+retiming the accumulation path
+changing the memory-to-accumulator schedule
+```
+
+Any architectural modification must go through the project workflow before RTL changes are made.
+
+### N. Timing conclusion
+
+**FINAL TOP-LEVEL 100 MHz TIMING: FAIL**
+
+Measured reason:
+
+```text
+WNS = -3.453 ns
+TNS = -99.753 ns
+43 setup endpoints failing
+critical data path = 13.433 ns
+requirement = 10.000 ns
+```
+
+Hold and pulse-width timing pass.
+
+The next project action is a dedicated timing-closure analysis/design step before bitstream/hardware sign-off.
