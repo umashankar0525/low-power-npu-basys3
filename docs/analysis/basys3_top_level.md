@@ -3,14 +3,14 @@
 **Role:** Performance Analyst  
 **Active Phase:** Phase 8 — Basys 3 Top-Level Integration, Physical Validation, and Final Optimization  
 **Module:** `basys3_top_level`  
-**Workflow stage:** Step 3 — `/analyze basys3_top_level`  
-**Status:** PREDICTION ONLY — no Phase-8 top-level RTL, synthesis, implementation, or board measurement has been performed yet.
+**Workflow stage:** Step 9 — measured-vs-predicted update after behavioral simulation  
+**Status:** BEHAVIORAL MEASUREMENTS ADDED — functional predictions have been compared with XSim; synthesis, implementation, BRAM mapping, physical timing, and board measurements remain pending.
 
 ---
 
 ## 1. Purpose of This Analysis
 
-This document predicts the behavior and physical cost of the Phase-8 `basys3_top_level` **before RTL is generated**.
+This document began as the pre-RTL prediction analysis for the Phase-8 `basys3_top_level`. Step 9 now preserves those original predictions and adds measured behavioral results from the completed XSim run so that predictions and measurements remain auditable rather than silently replacing one another.
 
 The purpose is to create measurable expectations for:
 
@@ -29,6 +29,302 @@ timing-risk locations
 ```
 
 After the RTL is built, simulated, synthesized, and implemented, these predictions must be compared against measurements. A later Vivado report is not allowed to silently replace the predictions; differences must be explained.
+
+---
+
+## Step 9 Update — Behavioral Measured vs Predicted
+
+### A. Evidence source
+
+The completed Vivado XSim run of:
+
+```text
+tb/integration/tb_basys3_top_level.v
+```
+
+finished with:
+
+```text
+PASS: tb_basys3_top_level completed with zero errors
+$finish called at time : 1210 ns
+```
+
+Simulation configuration remained:
+
+```text
+clock               = 100 MHz
+clock period        = 10 ns
+SIM_DEBOUNCE_CYCLES = 4
+SIM_DEBOUNCE_WIDTH  = 3
+```
+
+Only the simulation debounce threshold was shortened. The accelerator clock and transaction schedule were not changed.
+
+### B. Accepted-start-to-done latency
+
+Prediction:
+
+```text
+7 cycles x 10 ns = 70 ns
+```
+
+Measured final recovery transaction:
+
+```text
+accepted_start_time = 0x429 = 1065 ns
+raw_done_time       = 0x46F = 1135 ns
+```
+
+Therefore:
+
+```text
+1135 ns - 1065 ns = 70 ns
+```
+
+Result:
+
+```text
+PREDICTED = 70 ns
+MEASURED  = 70 ns
+ERROR     = 0 ns
+MATCH     = exact
+```
+
+This confirms that the board wrapper did not alter the core's seven-cycle compute latency once `core_start` was accepted.
+
+### C. Operand request count and sequencing
+
+Prediction:
+
+```text
+activation logical requests = 0 -> 1 -> 2
+weight logical requests     = 0 -> 1 -> 2
+paired request cycles       = 3
+total 32-bit word reads     = 6
+```
+
+Measured final recovery scoreboard:
+
+```text
+request_count = 3
+error_count   = 0
+```
+
+The testbench did not merely count requests. It asserted:
+
+```text
+first request  address = 0
+second request address = 1
+third request  address = 2
+activation_rd_en and weight_rd_en asserted together
+activation_addr == weight_addr
+```
+
+Result:
+
+```text
+PREDICTED paired request cycles = 3
+MEASURED paired request cycles  = 3
+ADDRESS ORDER                  = 0 -> 1 -> 2, assertions passed
+MATCH                          = yes
+```
+
+Because each paired cycle reads one 32-bit activation word and one 32-bit weight word, the measured three paired cycles correspond structurally to:
+
+```text
+3 activation words + 3 weight words = 6 total word reads
+```
+
+### D. One-clock synchronous memory contract
+
+Prediction:
+
+```text
+request at cycle N
+-> corresponding memory data returned according to one-clock synchronous behavior
+```
+
+The scoreboard stored the expected activation and weight word for each current request and checked the visible memory outputs against the previous request relationship. The completed run ended with:
+
+```text
+error_count = 0
+```
+
+and the final expected third words were:
+
+```text
+activation = 0x00000009
+weight     = 0x00000001
+```
+
+Result:
+
+```text
+PREDICTED memory behavior = one-clock synchronous
+MEASURED assertion result = passed
+MATCH                     = yes
+```
+
+This is important because the Phase-7 convolution schedule depends on the returned word being associated with the prior request rather than behaving as a zero-latency combinational memory.
+
+### E. Numerical result
+
+Prediction:
+
+```text
+accumulator = 45
+M_INT       = 3
+FRAC_BITS   = 2
+result      = 34 decimal = 0x22 = 0010_0010
+```
+
+Measured final board-visible state:
+
+```text
+led_result = 0x22
+           = 34 decimal
+```
+
+Result:
+
+```text
+PREDICTED = 34
+MEASURED  = 34
+MATCH     = exact
+```
+
+This validates the integrated path:
+
+```text
+initialized operand memory
+-> convolution
+-> requantization
+-> architectural activation_out
+-> board result LEDs
+```
+
+for the directed demonstration vector.
+
+### F. Transaction and completion counts
+
+For the final recovery transaction, the measured scoreboard showed:
+
+```text
+accepted_start_count = 1
+raw_done_count       = 1
+request_count        = 3
+error_count          = 0
+```
+
+Therefore one accepted transaction produced exactly one raw completion event and exactly three paired operand request cycles in that directed case.
+
+### G. Persistent completion indication
+
+Prediction:
+
+```text
+raw core_done is a one-cycle protocol event
+done_latched / led_done becomes persistent for human observation
+```
+
+Measured end state:
+
+```text
+led_done          = 1
+btn_start         = 0
+btn_reset         = 0
+track_transaction = 0
+```
+
+Result:
+
+```text
+persistent completion indication = confirmed behaviorally
+```
+
+The completed testbench also checked that the persistent board status did not alter the core's measured 70 ns completion time.
+
+### H. Button and reset protocol observations
+
+The zero-error directed run also verified:
+
+```text
+button bounce -> no accepted transaction
+held start button -> no repeated starts
+start_rise=1 while core_busy=1 -> core_start=0
+physical reset path -> eventual synchronized/debounced state clear
+clean reset_level while busy -> synchronous abort with no stale completion
+post-reset transaction -> normal recovery
+```
+
+A debugging correction was required before the final pass: the original test incorrectly expected the debounced physical reset button to abort a 70 ns computation before normal completion. The corrected verification separates physical-button conditioning from the clean synchronous reset contract. No accelerator RTL change was required for that correction.
+
+### I. Measured-vs-predicted behavioral summary
+
+| Quantity | Step-3 prediction | Step-8 measurement | Comparison |
+|---|---:|---:|---|
+| Clock period | 10 ns | 10 ns | MATCH |
+| Accepted-start-to-raw-done latency | 70 ns | 70 ns | EXACT MATCH |
+| Paired operand request cycles | 3 | 3 | MATCH |
+| Logical request order | 0 -> 1 -> 2 | assertions passed | MATCH |
+| Memory return behavior | one-clock synchronous | assertions passed | MATCH |
+| Nominal board result | 34 / 0x22 | 34 / 0x22 | EXACT MATCH |
+| Accepted starts in final recovery case | 1 | 1 | MATCH |
+| Raw done events in final recovery case | 1 | 1 | MATCH |
+| Persistent done indication | expected | `led_done=1` at end | MATCH |
+| Behavioral error count | 0 expected | 0 | MATCH |
+
+### J. Predictions that remain unmeasured
+
+The following Step-3 predictions have **not** yet been physically measured and must not be reported as confirmed:
+
+```text
+90 ns initiation interval under back-to-back machine-driven traffic
+11.11 Mtransactions/s
+100 MMAC/s
+800 MB/s peak internal bandwidth
+266.67 MB/s sustained physical operand bandwidth
+200 MB/s useful operand bandwidth
+12 bonded IOBs
+approximately 130..150 Slice FF
+approximately 450..550 LUT
+approximately 85..100 CARRY4
+DSP48E1 = 0 likely
+Block RAM Tile > 0, approximately 1 tile equivalent expected
+100 MHz routed setup/hold closure
+final critical path
+power
+physical Basys-3 pin and LED/button behavior
+```
+
+Some throughput/bandwidth quantities remain mathematically derived from the architecture, but they were not independently measured by the completed board-top testbench. Physical resource and timing claims require synthesis/implementation evidence.
+
+### K. Step-9 behavioral conclusion
+
+All behavioral quantities directly checked by the completed XSim testbench agree with the corresponding Step-3 predictions.
+
+The strongest measured agreements are:
+
+```text
+latency       : 70 ns predicted -> 70 ns measured
+request cycles: 3 predicted     -> 3 measured
+request order : 0,1,2 predicted -> assertions passed
+memory timing : 1-clock predicted -> assertions passed
+result        : 34 predicted     -> 34 measured
+error count   : 0 expected       -> 0 measured
+```
+
+Therefore the behavioral portion of the Step-3 prediction model is validated for the directed Phase-8 board-demo configuration.
+
+Physical sign-off remains open and requires:
+
+```text
+synthesis utilization report
+BRAM/DSP primitive mapping
+implemented design timing report
+Basys-3 XDC / pin validation
+hardware board demonstration
+```
 
 ---
 
@@ -1129,9 +1425,11 @@ The most important architectural distinction is that the approximately 10 ms but
 
 ---
 
-## 25. Understanding Gate
+## 25. Historical Step-3 Understanding Gate
 
-Before Step 4 and any Phase-8 RTL generation, explain the following in your own words:
+The following gate was completed before RTL generation and is retained here for traceability. It is no longer an active blocker.
+
+The original questions were:
 
 1. Why does a 10 ms button debounce not mean the NPU has 10 ms compute latency?
 2. Derive the predicted 70 ns compute latency and 90 ns initiation interval from the 100 MHz clock.
