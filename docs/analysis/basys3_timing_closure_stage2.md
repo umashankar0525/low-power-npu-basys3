@@ -1171,3 +1171,299 @@ functionally verified
 and
 post-route timing verified
 ```
+
+
+---
+
+## Final Worst-Path Characterization
+
+**Evidence:** final routed timing path screenshots after Stage-2 timing closure.
+
+The exact worst setup path is now known.
+
+### A. Final worst path
+
+Source:
+
+```text
+u_operand_bram_dual_read/weight_data_reg/CLKBWRCLK
+```
+
+Source cell:
+
+```text
+RAMB18E1
+```
+
+Destination:
+
+```text
+u_convolution_integration/
+u_memory_interface_dataflow/
+product_pipe3_reg[14]/D
+```
+
+Destination cell:
+
+```text
+FDRE
+```
+
+Therefore the final critical path is:
+
+```text
+weight BRAM
+-> multiplier logic
+-> product_pipe3[14]
+```
+
+This is exactly the predicted Stage-A1 candidate:
+
+```text
+BRAM
+-> multiplier
+-> product register
+```
+
+The reduction tree is no longer part of the worst path.
+
+### B. Final timing values
+
+Measured:
+
+```text
+Slack             = +0.913 ns
+Requirement       = 10.000 ns
+Data path delay   = 8.996 ns
+
+Logic delay       = 5.461 ns
+Route delay       = 3.535 ns
+
+Logic percentage  = 60.704%
+Route percentage  = 39.296%
+
+Logic levels      = 9
+CARRY4            = 4
+LUT2              = 1
+LUT3              = 2
+LUT4              = 1
+LUT6              = 1
+
+Clock path skew   = -0.084 ns
+Clock uncertainty = 0.035 ns
+```
+
+Check:
+
+```text
+5.461 ns + 3.535 ns
+= 8.996 ns
+```
+
+Therefore the reported logic/route decomposition is internally consistent.
+
+### C. Comparison with Stage-1 critical path
+
+Stage-1 worst path:
+
+```text
+BRAM
+-> multiply/reduction
+-> partial_sum_pipe
+
+data path delay = 11.289 ns
+logic levels    = 13
+CARRY4          = 7
+WNS             = -1.260 ns
+```
+
+Stage-2 worst path:
+
+```text
+BRAM
+-> multiplier
+-> product_pipe
+
+data path delay = 8.996 ns
+logic levels    = 9
+CARRY4          = 4
+WNS             = +0.913 ns
+```
+
+Data-path delay reduction:
+
+```text
+11.289 - 8.996
+= 2.293 ns
+```
+
+Relative reduction:
+
+```text
+2.293 / 11.289 x 100
+≈ 20.31%
+```
+
+Logic-level reduction:
+
+```text
+13 - 9
+= 4 levels
+```
+
+CARRY4 depth reduction:
+
+```text
+7 - 4
+= 3 CARRY4 stages
+```
+
+This directly explains why the second pipeline recovered enough setup margin to close 100 MHz.
+
+### D. Comparison with the original pre-pipeline path
+
+Original pre-pipeline worst path:
+
+```text
+BRAM
+-> multiply/reduction
+-> accumulator
+-> accumulator_reg
+
+data path delay = 13.433 ns
+logic levels    = 17
+CARRY4          ≈ 10
+WNS             = -3.453 ns
+```
+
+Final Stage-2 worst path:
+
+```text
+BRAM
+-> multiplier
+-> product_pipe
+
+data path delay = 8.996 ns
+logic levels    = 9
+CARRY4          = 4
+WNS             = +0.913 ns
+```
+
+Total data-path delay reduction:
+
+```text
+13.433 - 8.996
+= 4.437 ns
+```
+
+Relative reduction:
+
+```text
+4.437 / 13.433 x 100
+≈ 33.03%
+```
+
+Logic-level reduction:
+
+```text
+17 - 9
+= 8 levels
+```
+
+CARRY4-depth reduction:
+
+```text
+10 - 4
+≈ 6 stages
+```
+
+Thus the two-stage timing-closure process transformed one deep combinational path into multiple shorter registered stages.
+
+### E. Logic-versus-routing balance
+
+Final path:
+
+```text
+logic = 5.461 ns
+route = 3.535 ns
+```
+
+Percentages:
+
+```text
+logic ≈ 60.7%
+route ≈ 39.3%
+```
+
+The same broad 60/40 balance seen previously remains.
+
+However, the absolute delay of both components has fallen enough to satisfy the 10 ns requirement.
+
+This confirms that the successful fix was architectural pipelining rather than simply hoping for a better route.
+
+### F. Architectural interpretation
+
+The final datapath is now effectively partitioned into:
+
+```text
+Stage A1:
+BRAM
+-> multiplier
+-> product_pipe
+
+Stage A2:
+product_pipe
+-> reduction tree
+-> partial_sum_pipe
+
+Stage B:
+partial_sum_pipe
+-> accumulator
+-> accumulator_reg
+```
+
+The final worst path is Stage A1.
+
+Because:
+
+```text
+WNS = +0.913 ns
+```
+
+even the slowest of the three major pipeline stages satisfies the 10 ns timing constraint.
+
+Therefore all other setup paths also satisfy the constraint.
+
+### G. Final timing-closure conclusion
+
+The Stage-2 timing-closure objective is fully demonstrated by both summary and detailed path evidence:
+
+```text
+WNS = +0.913 ns
+TNS = 0
+setup failing endpoints = 0
+
+WHS = +0.122 ns
+THS = 0
+
+WPWS = +4.500 ns
+TPWS = 0
+```
+
+and the worst setup path itself is:
+
+```text
+RAMB18E1 weight BRAM
+-> multiplier logic
+-> product_pipe3_reg[14]
+```
+
+with:
+
+```text
+8.996 ns data-path delay
+9 logic levels
+4 CARRY4
+```
+
+The final design therefore meets the 100 MHz requirement with positive setup margin.
