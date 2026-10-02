@@ -658,3 +658,64 @@ Before Step 3 /analyze basys3_timing_closure, explain in your own words:
 8. Why is the expected top-level latency now 8 cycles / 80 ns?
 9. Which resources are expected to change, and which should remain unchanged?
 10. Why can we predict timing improvement but still not claim closure before implementation?
+
+
+---
+
+## Step 5 Implementation Record
+
+**Status:** RTL MODIFICATION COMPLETE — verification planning is next.
+
+The approved timing-closure architecture has now been implemented in:
+
+```text
+rtl/compute/memory_interface_dataflow.v
+```
+
+Implemented changes:
+
+```text
+added partial_sum_pipe : signed [31:0]
+added ST_PIPE0
+shifted accumulation by one pipeline stage
+preserved three paired operand requests
+preserved request order 0 -> 1 -> 2
+preserved INT32 accumulator precision
+preserved external module interface
+preserved fixed arithmetic result target 45 -> 34 / 0x22
+```
+
+The implemented state sequence is:
+
+```text
+ST_IDLE
+-> ST_WAIT0
+-> ST_PIPE0
+-> ST_WORD0
+-> ST_WORD1
+-> ST_WORD2
+-> ST_IDLE
+```
+
+The intended arithmetic timing is:
+
+```text
+ST_PIPE0:
+partial_sum_pipe <= S0
+
+ST_WORD0:
+accumulator      <= S0
+partial_sum_pipe <= S1
+
+ST_WORD1:
+accumulator      <= S0 + S1
+partial_sum_pipe <= S2
+
+ST_WORD2:
+result <= S0 + S1 + S2
+done   <= 1
+```
+
+No other RTL module or XDC was modified in this implementation step.
+
+Verification must now prove that the cycle schedule, numerical result, request count/order, done behavior, and predicted 80 ns top-level latency are correct before synthesis/implementation timing is rerun.
