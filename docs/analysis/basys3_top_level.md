@@ -1443,3 +1443,377 @@ The original questions were:
 10. Why must the predicted LUT/FF/CARRY ranges be compared against synthesis measurements instead of treated as exact facts?
 
 **Hard gate:** do not generate `basys3_top_level` RTL until the learner restates the prediction logic correctly.
+
+---
+
+## Step 9 Update — Final Top-Level Synthesis Resource Measurement
+
+**Evidence:** Vivado 2018.2 synthesized `basys3_top_level` for `xc7a35tcpg236-1`.
+
+**Synthesis status:** COMPLETE — resource utilization is now measured. Post-route timing and board hardware validation remain pending.
+
+### A. Tool and design identity
+
+Measured synthesis run:
+
+```text
+Tool        = Vivado v2018.2
+Top         = basys3_top_level
+Part        = xc7a35tcpg236-1
+Design state= Synthesized
+```
+
+The synthesis log reports:
+
+```text
+Synthesis finished with 0 errors,
+0 critical warnings,
+19 warnings.
+```
+
+Therefore the synthesis run completed successfully.
+
+### B. Final synthesized resource measurement
+
+Measured utilization:
+
+| Resource | Step-3 prediction | Synthesized measurement | Comparison |
+|---|---:|---:|---|
+| Slice LUTs | approximately 450..550 | 465 | MATCH |
+| Slice Registers / FF | approximately 130..150 | 138 | MATCH |
+| CARRY4 | approximately 85..100 | 96 | MATCH |
+| DSP | 0 likely | 0 | MATCH |
+| Block RAM Tile | >0, approximately 1 tile equivalent | 1 | MATCH |
+| RAMB18 | non-zero expected | 2 | CONFIRMED |
+| Bonded IOB | 12 | 12 | MATCH |
+| BUFG / global clock buffer | 1 expected | 1 | MATCH |
+
+### C. LUT utilization derivation
+
+Measured:
+
+```text
+Slice LUTs = 465
+Available  = 20,800
+```
+
+Utilization:
+
+```text
+465 / 20,800 x 100
+= 2.235...%
+≈ 2.24%
+```
+
+Vivado reports 2.24%, which matches the arithmetic.
+
+The earlier prediction range was:
+
+```text
+450..550 LUT
+```
+
+Measured value:
+
+```text
+465 LUT
+```
+
+Therefore the prediction is inside the measured result range.
+
+### D. Register utilization derivation
+
+Measured:
+
+```text
+Slice Registers = 138
+Available       = 41,600
+```
+
+Utilization:
+
+```text
+138 / 41,600 x 100
+= 0.3317...%
+≈ 0.33%
+```
+
+The earlier prediction range was:
+
+```text
+130..150 FF
+```
+
+Measured:
+
+```text
+138
+```
+
+Therefore the prediction matches.
+
+### E. Carry-chain measurement
+
+Measured primitive count:
+
+```text
+CARRY4 = 96
+```
+
+Prediction:
+
+```text
+approximately 85..100
+```
+
+Therefore:
+
+```text
+96 is inside the predicted range
+```
+
+This is consistent with the arithmetic-heavy accumulator/requantization/debounce datapaths.
+
+### F. DSP mapping
+
+Measured:
+
+```text
+DSP = 0
+```
+
+This matches the prediction that the final demonstration arithmetic would likely remain in LUT/carry logic rather than map to DSP48 resources.
+
+Important interpretation:
+
+```text
+DSP = 0
+```
+
+does not mean multiplication disappeared. It means Vivado implemented the required arithmetic without consuming DSP48 sites for this design/configuration.
+
+### G. BRAM inference — now physically proven at synthesis
+
+Measured memory utilization:
+
+```text
+Block RAM Tile = 1
+RAMB18         = 2
+RAMB18E1       = 2
+```
+
+The synthesis log also reports both logical 512x32 operand memories as:
+
+```text
+activation_data_reg  512x32  -> Block RAM
+weight_data_reg      512x32  -> Block RAM
+```
+
+Therefore the earlier requirement:
+
+```text
+non-zero BRAM use
+```
+
+is now proven.
+
+Two RAMB18 primitives occupy one Artix-7 block-RAM tile equivalent:
+
+```text
+2 x RAMB18
+= 1 block-RAM tile
+```
+
+This exactly matches the earlier approximate one-tile-equivalent prediction.
+
+### H. Why two RAMB18 primitives are reasonable
+
+Each logical memory is:
+
+```text
+512 words x 32 bits
+= 16,384 bits
+```
+
+One RAMB18 class primitive provides approximately 18 Kibit capacity.
+
+Thus each 512x32 memory fits into one RAMB18-class primitive:
+
+```text
+activation memory -> 1 x RAMB18E1
+weight memory     -> 1 x RAMB18E1
+```
+
+Total:
+
+```text
+2 x RAMB18E1
+```
+
+which Vivado reports as one Block RAM Tile.
+
+### I. I/O utilization
+
+Measured:
+
+```text
+Bonded IOB = 12
+```
+
+Prediction:
+
+```text
+3 inputs + 9 outputs = 12
+```
+
+Therefore the final synthesized I/O count matches exactly.
+
+Primitive evidence also shows:
+
+```text
+IBUF = 3
+OBUF = 9
+```
+
+which independently matches:
+
+```text
+3 inputs
+9 outputs
+```
+
+### J. Clock-resource measurement
+
+Measured:
+
+```text
+BUFGCTRL = 1
+primitive BUFG = 1
+```
+
+This matches the single-clock architecture:
+
+```text
+one 100 MHz board clock
+-> one global clock buffer
+```
+
+No MMCM or PLL is used:
+
+```text
+MMCME2_ADV = 0
+PLLE2_ADV  = 0
+```
+
+This is consistent with the design rule that no secondary fabric-generated clock is required.
+
+### K. Synthesis warnings that matter
+
+The run completed with:
+
+```text
+0 errors
+0 critical warnings
+19 warnings
+```
+
+Several warnings are optimization-related, including removal of unused sequential elements.
+
+There are also synthesis messages stating that the block-RAM timing might be sub-optimal because no optional output register was merged into the RAM.
+
+This is **not** evidence of timing failure.
+
+It means:
+
+```text
+BRAM was inferred successfully
+but
+post-route timing must determine whether the selected memory interface meets 100 MHz
+```
+
+Therefore these messages become a timing-risk item to inspect during implementation, not a synthesis-resource failure.
+
+### L. Prediction accuracy summary
+
+The major physical resource predictions are now measured:
+
+```text
+LUT     predicted 450..550  -> measured 465
+FF      predicted 130..150  -> measured 138
+CARRY4  predicted 85..100   -> measured 96
+DSP     predicted 0 likely  -> measured 0
+BRAM    predicted >0/~1 tile-> measured 1 tile / 2 RAMB18E1
+IOB     predicted 12        -> measured 12
+BUFG    predicted 1         -> measured 1
+```
+
+All major resource predictions match the final synthesized design.
+
+### M. What is now proven
+
+Synthesis now proves:
+
+```text
+final top-level RTL synthesizes successfully
+LUT = 465
+FF = 138
+CARRY4 = 96
+DSP = 0
+BRAM Tile = 1
+RAMB18E1 = 2
+Bonded IOB = 12
+BUFG = 1
+```
+
+The BRAM acceptance requirement is therefore satisfied at synthesis.
+
+### N. What is still not proven
+
+Synthesis does not prove routed timing.
+
+Still required:
+
+```text
+implementation / place-and-route
+post-route WNS
+post-route TNS
+post-route WHS
+post-route THS
+final critical path
+bitstream generation
+physical Basys-3 programming
+physical start/reset/result/done validation
+power analysis
+```
+
+### O. Physical-validation status after synthesis
+
+```text
+Behavioral simulation       PASS
+XDC Vivado verification     PASS
+Synthesis completion        PASS
+Resource utilization        MEASURED
+BRAM inference              CONFIRMED
+Final I/O count             CONFIRMED
+Global clock buffer         CONFIRMED
+Post-route STA              PENDING
+Bitstream                    PENDING
+Board validation             PENDING
+```
+
+### P. Next required evidence
+
+The next required Phase-8 measurement is the **implemented/post-route timing summary**.
+
+Required values:
+
+```text
+WNS
+TNS
+WHS
+THS
+critical setup path
+critical hold path if relevant
+```
+
+Only that evidence can establish whether the fully integrated top-level design actually closes at the 100 MHz / 10 ns requirement.
