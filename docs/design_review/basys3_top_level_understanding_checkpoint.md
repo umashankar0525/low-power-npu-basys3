@@ -4,7 +4,7 @@
 **Active Phase:** Phase 8 — Basys 3 Top-Level Integration, Physical Validation, and Final Optimization  
 **Module:** `basys3_top_level`  
 **Workflow stage:** Step 10 — design review understanding gate  
-**Status:** PARTIAL — six of seven review concepts passed; reset-test reasoning needs correction before Step 11.
+**Status:** PASSED — Step 11 `/test basys3_top_level` is unlocked.
 
 ## Assessment
 
@@ -16,7 +16,7 @@ The learner correctly distinguished RTL/XSim correctness from physical FPGA proo
 ### 2. Evidence for 70 ns latency and result 34
 **PASSED.**
 
-The learner correctly related the 100 MHz clock to a 10 ns period and the seven-cycle transaction to 70 ns, and correctly derived the numerical result:
+The learner correctly related the 100 MHz clock to a 10 ns period and the seven-cycle transaction to 70 ns, and correctly derived:
 
 ```text
 45 x 3 = 135
@@ -24,7 +24,13 @@ The learner correctly related the 100 MHz clock to a 10 ns period and the seven-
 137 >> 2 = 34
 ```
 
-The existing Step-8 evidence is even stronger because the measured timestamps were 1065 ns and 1135 ns, giving exactly 70 ns.
+The Step-8 timestamps provide direct quantitative evidence:
+
+```text
+accepted_start_time = 1065 ns
+raw_done_time       = 1135 ns
+latency             = 70 ns
+```
 
 ### 3. Why ram_style does not prove BRAM
 **PASSED.**
@@ -42,36 +48,57 @@ The learner correctly explained that the XDC establishes logical-port to package
 The learner correctly identified the need for utilization, timing, I/O/clock, and implementation evidence. Physical sign-off requires resource mapping and post-route timing data such as WNS/TNS/WHS/THS.
 
 ### 6. Why the original physical-reset-abort test was invalid
-**PARTIAL — correction required.**
+**PASSED.**
 
-The learner focused on missing XDC / physical-path establishment. Those are real board-readiness concerns, but they are not the reason the original XSim reset-abort test failed.
-
-The actual reason was timing:
+The learner correctly identified the actual cause: the physical reset path is much slower than the accelerator transaction.
 
 ```text
 core transaction latency = 70 ns
 physical reset path       = synchronizer + debounce + synchronous sampling
+hardware debounce         = approximately 10 ms
 ```
 
-Even with the simulation debounce shortened to four cycles, the cleaned `reset_level` became effective too late to prevent the normal E7 completion. On the real board, the full 10 ms debounce is enormously slower than a 70 ns transaction.
+The learner correctly derived:
 
-Therefore the corrected verification split is:
+```text
+10 ms / 70 ns ≈ 142,857
+```
+
+and explained that the physical reset button can prove eventual cleaned reset behavior, but cannot reliably prove interruption of a specific 70 ns transaction before completion.
+
+The corrected verification split is understood:
 
 ```text
 physical reset button
--> prove synchronization/debounce/eventual clear
+-> synchronization/debounce/eventual clear
 
-already-clean reset_level while core_busy=1
--> prove synchronous abort before normal completion
+clean internal reset_level while core_busy=1
+-> synchronous abort
+-> no stale done
 ```
 
 ### 7. Proven versus open Phase-8 work
 **PASSED.**
 
-The learner correctly separated behaviorally established items from the still-open physical tasks: XDC, final top synthesis/implementation, BRAM/resource mapping, routed timing, bitstream, and hardware-board validation.
+The learner correctly separated behaviorally established items from still-open physical tasks: dedicated XDC, final top synthesis/implementation, BRAM/resource mapping, routed timing, bitstream, and hardware-board validation.
 
 ## Gate result
 
-**BASYS3 TOP-LEVEL DESIGN REVIEW UNDERSTANDING GATE: NOT YET PASSED**
+**BASYS3 TOP-LEVEL DESIGN REVIEW UNDERSTANDING GATE: PASSED**
 
-Only the reset-test reasoning needs to be corrected before Step 11 `/test basys3_top_level` can be unlocked.
+Step 10 design review is behaviorally complete.
+
+The next workflow action is:
+
+```text
+Step 11 — /test basys3_top_level
+```
+
+Important boundary:
+
+```text
+behavioral design review = approved
+physical FPGA sign-off   = still pending
+```
+
+The knowledge test may proceed, but passing it must not be interpreted as physical closure of Phase 8.
