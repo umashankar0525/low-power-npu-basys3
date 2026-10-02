@@ -843,3 +843,447 @@ Before Step 4 confirmation and any RTL modification, explain in your own words:
 10. Why do we predict better WNS/TNS but refuse to predict an exact new slack?
 11. Why must hold timing be rechecked even though it currently passes?
 12. What exact measured conditions will define successful 100 MHz timing closure?
+
+
+---
+
+## Step 9 Update — Behavioral Measured vs Predicted
+
+**Role:** Performance Analyst  
+**Active Phase:** Phase 8 — Basys 3 Top-Level Integration, Physical Validation, and Final Optimization  
+**Module:** `basys3_timing_closure`  
+**Evidence source:** completed XSim run of the modified pipelined RTL  
+**Status:** BEHAVIORAL PREDICTIONS MATCH — fresh synthesis/resource and post-route timing measurements remain pending.
+
+### A. Completed XSim evidence
+
+The timing-closure verification completed with:
+
+```text
+TEST 5: post-reset recovery transaction
+PASS: tb_basys3_top_level timing-closure verification completed with zero errors
+$finish called at time : 1230 ns
+```
+
+The final PASS is meaningful because every protocol, pipeline, arithmetic, reset, recovery, and latency assertion increments `error_count` on failure.
+
+Therefore:
+
+```text
+error_count = 0
+```
+
+means all implemented behavioral checks passed.
+
+---
+
+### B. Partial-sum prediction comparison
+
+Step-3 prediction:
+
+```text
+S0 = 10
+S1 = 26
+S2 = 9
+```
+
+The testbench explicitly checked the registered pipeline values.
+
+Measured assertion result:
+
+```text
+S0 = 10 -> PASS
+S1 = 26 -> PASS
+S2 = 9  -> PASS
+```
+
+Comparison:
+
+```text
+PREDICTED = exact sequence 10,26,9
+MEASURED  = all assertions passed
+MATCH     = yes
+```
+
+---
+
+### C. Accumulator progression
+
+Step-3 prediction:
+
+```text
+after S0:
+accumulator = 10
+
+after S1:
+accumulator = 36
+
+final:
+result = 45
+```
+
+Measured assertion result:
+
+```text
+accumulator 10 -> PASS
+accumulator 36 -> PASS
+final result 45 -> PASS
+```
+
+Therefore:
+
+```text
+0 -> 10 -> 36 -> 45
+```
+
+is behaviorally confirmed.
+
+---
+
+### D. Memory request count and order
+
+Prediction:
+
+```text
+paired request count = 3
+request order        = 0 -> 1 -> 2
+```
+
+The testbench continuously checked:
+
+```text
+activation_rd_en == weight_rd_en
+activation_addr  == weight_addr
+```
+
+and rejected any fourth request.
+
+Measured result:
+
+```text
+3 paired requests = PASS
+order 0 -> 1 -> 2 = PASS
+activation/weight alignment = PASS
+```
+
+Therefore the pipeline changed arithmetic timing but did not alter operand traffic.
+
+---
+
+### E. One-clock synchronous memory behavior
+
+Prediction:
+
+```text
+request at one edge
+-> corresponding registered BRAM word visible according to one-clock synchronous behavior
+```
+
+The scoreboard checked expected activation/weight words against the previous request relationship.
+
+Measured result:
+
+```text
+one-clock memory contract = PASS
+```
+
+Thus the new pipeline did not accidentally assume combinational BRAM behavior.
+
+---
+
+### F. Numerical result
+
+Prediction:
+
+```text
+engine result = 45
+activation_out = 34 = 0x22
+```
+
+Derivation:
+
+```text
+45 x 3 = 135
+rounding bias = 2
+135 + 2 = 137
+137 >> 2 = 34
+```
+
+Measured result:
+
+```text
+engine result assertion = PASS
+board-visible output assertion = PASS
+```
+
+Comparison:
+
+```text
+PREDICTED engine result = 45
+MEASURED assertion      = PASS
+
+PREDICTED output = 34 / 0x22
+MEASURED assertion = PASS
+```
+
+The pipeline changed timing only, not arithmetic.
+
+---
+
+### G. Latency prediction comparison
+
+Old architecture measured:
+
+```text
+7 cycles = 70 ns
+```
+
+Step-3 timing-closure prediction:
+
+```text
+new latency = 8 cycles
+            = 8 x 10 ns
+            = 80 ns
+```
+
+The modified testbench explicitly checks:
+
+```text
+raw_done_time - accepted_start_time == 80 ns
+```
+
+The completed zero-error run therefore confirms:
+
+```text
+PREDICTED = 80 ns
+MEASURED  = 80 ns assertion passed
+ERROR     = 0 ns
+MATCH     = exact
+```
+
+Latency increase:
+
+```text
+80 ns - 70 ns
+= 10 ns
+= one clock cycle
+```
+
+Percentage latency increase:
+
+```text
+10 / 70 x 100
+= 14.2857...%
+≈ 14.29%
+```
+
+This matches the predicted cost of the added pipeline boundary.
+
+---
+
+### H. Completion-event behavior
+
+Prediction:
+
+```text
+one accepted transaction
+-> exactly one raw completion event
+```
+
+The full zero-error testbench run confirms:
+
+```text
+exactly one raw done event = PASS
+persistent board done behavior = PASS
+```
+
+Therefore the additional pipeline state did not duplicate completion signaling.
+
+---
+
+### I. Reset and recovery behavior
+
+Prediction:
+
+```text
+reset clears:
+partial_sum_pipe
+accumulator
+result/completion state
+```
+
+and after reset:
+
+```text
+new transaction completes normally
+```
+
+Measured testbench result:
+
+```text
+pipeline reset checks = PASS
+clean-reset abort checks = PASS
+no stale completion after reset = PASS
+post-reset recovery transaction = PASS
+```
+
+This confirms that the new pipeline register behaves as proper architectural state.
+
+---
+
+### J. Behavioral prediction summary
+
+| Quantity | Step-3 prediction | Step-8 measurement | Result |
+|---|---:|---:|---|
+| S0 | 10 | assertion passed | MATCH |
+| S1 | 26 | assertion passed | MATCH |
+| S2 | 9 | assertion passed | MATCH |
+| accumulator after S0 | 10 | assertion passed | MATCH |
+| accumulator after S1 | 36 | assertion passed | MATCH |
+| final engine result | 45 | assertion passed | MATCH |
+| paired memory requests | 3 | assertion passed | MATCH |
+| request order | 0 -> 1 -> 2 | assertion passed | MATCH |
+| one-clock BRAM behavior | required | assertion passed | MATCH |
+| activation output | 34 / 0x22 | assertion passed | MATCH |
+| top-level latency | 80 ns | assertion passed | EXACT MATCH |
+| added latency | +10 ns | +10 ns | EXACT MATCH |
+| raw completion events | 1 | assertion passed | MATCH |
+| reset/recovery | required | assertion passed | MATCH |
+| behavioral error count | 0 | 0 | MATCH |
+
+All behavioral predictions directly checked by XSim match.
+
+---
+
+### K. What remains prediction-only
+
+The following Step-3 values have **not yet been re-measured after the RTL change**:
+
+```text
+FF count ≈ 157..171
+LUT count ≈ near previous 465
+CARRY4 ≈ broadly near previous 96
+DSP = 0 expected
+RAMB18E1 = 2 expected
+Block RAM Tile = 1 expected
+IOB = 12 expected
+BUFG = 1 expected
+```
+
+Likewise, these timing expectations remain unmeasured:
+
+```text
+old BRAM->reduction->accumulator path should disappear
+new critical path should migrate
+WNS should improve
+TNS magnitude should reduce
+failing setup endpoints should reduce
+100 MHz closure may or may not be achieved
+```
+
+No fresh synthesis/implementation report has yet been supplied for the pipelined RTL.
+
+Therefore the old pre-pipeline physical reports must not be reused as evidence for the modified design.
+
+---
+
+### L. Performance quantities still derived, not independently measured
+
+Based on the predicted 10-cycle initiation interval:
+
+```text
+II = 100 ns
+transaction rate = 10 Mtransactions/s
+MAC throughput = 90 MMAC/s
+physical operand BW = 240 MB/s
+useful operand BW = 180 MB/s
+```
+
+These remain architectural derivations.
+
+The completed behavioral testbench directly measured transaction latency, not sustained back-to-back machine throughput.
+
+Therefore these values remain mathematically predicted until a dedicated throughput measurement is performed.
+
+---
+
+### M. Step-9 behavioral conclusion
+
+The timing-closure redesign achieved exactly the intended behavioral tradeoff:
+
+```text
+old latency = 70 ns
+new latency = 80 ns
+
+functional result unchanged:
+45 -> 34 / 0x22
+
+memory traffic unchanged:
+3 paired requests
+
+pipeline sequencing:
+correct
+
+reset/recovery:
+correct
+```
+
+So the architectural redesign is behaviorally validated.
+
+The physical question remains open:
+
+```text
+Did the added register actually remove enough combinational delay to meet 100 MHz after place and route?
+```
+
+That requires a **fresh synthesis and fresh implementation** of the modified RTL.
+
+---
+
+### N. Next physical measurements required
+
+Fresh synthesis must provide:
+
+```text
+LUT
+FF
+CARRY4
+DSP
+RAMB18E1 / Block RAM Tile
+IOB
+BUFG
+```
+
+Fresh implementation/post-route STA must provide:
+
+```text
+WNS
+TNS
+WHS
+THS
+WPWS
+TPWS
+failing setup endpoints
+new critical path
+logic delay
+route delay
+logic levels
+```
+
+The success condition remains:
+
+```text
+WNS >= 0
+TNS = 0
+WHS >= 0
+THS = 0
+WPWS >= 0
+TPWS = 0
+```
+
+at the unchanged:
+
+```text
+100 MHz
+10 ns period
+```
