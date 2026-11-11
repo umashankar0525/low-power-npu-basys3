@@ -14,7 +14,7 @@ Define a repeatable board-level validation procedure for the generated Stage-2 b
 
 The hardware test must verify:
 
-```text
+```
 FPGA configuration
 clock operation
 reset behavior
@@ -49,21 +49,21 @@ The test must not rely on internal signals that are invisible on the board.
 
 After valid reset:
 
-```text
+```
 led_result[7:0] = 0000_0000
 led_done        = 0
 ```
 
 After valid start and completion:
 
-```text
+```
 led_result[7:0] = 0010_0010
 led_done        = 1
 ```
 
 Therefore:
 
-```text
+```
 LED1 = ON
 LED5 = ON
 LED8 = ON
@@ -77,7 +77,7 @@ All other result LEDs must be OFF.
 
 Use Vivado Hardware Manager:
 
-```text
+```
 Open Hardware Manager
 -> Open Target
 -> Auto Connect
@@ -95,7 +95,7 @@ Do not modify RTL or XDC between the timing-closed implementation and board test
 
 Immediately after programming:
 
-```text
+```
 1. Do not evaluate result LEDs yet.
 2. Press and hold reset clearly longer than 10 ms.
 3. Release reset.
@@ -105,7 +105,7 @@ Immediately after programming:
 
 Required state:
 
-```text
+```
 LED0..LED7 = OFF
 LED8       = OFF
 ```
@@ -118,7 +118,7 @@ This establishes a known architectural starting state.
 
 From the reset-cleared state:
 
-```text
+```
 1. Press btn_start.
 2. Hold it clearly longer than 10 ms.
 3. Release btn_start.
@@ -128,7 +128,7 @@ From the reset-cleared state:
 
 Expected:
 
-```text
+```
 LED1 = ON
 LED5 = ON
 LED8 = ON
@@ -136,7 +136,7 @@ LED8 = ON
 
 Expected OFF:
 
-```text
+```
 LED0
 LED2
 LED3
@@ -147,7 +147,7 @@ LED7
 
 This corresponds to:
 
-```text
+```
 0x22 = 0010_0010
 ```
 
@@ -157,13 +157,13 @@ This corresponds to:
 
 After successful completion:
 
-```text
+```
 wait several seconds
 ```
 
 Expected:
 
-```text
+```
 LED1 remains ON
 LED5 remains ON
 LED8 remains ON
@@ -173,7 +173,7 @@ No LED should flicker or return to zero without reset.
 
 This confirms:
 
-```text
+```
 result register persistence
 done_latched persistence
 ```
@@ -184,7 +184,7 @@ done_latched persistence
 
 With:
 
-```text
+```
 LED1 = ON
 LED5 = ON
 LED8 = ON
@@ -192,7 +192,7 @@ LED8 = ON
 
 apply reset again:
 
-```text
+```
 press reset
 hold > 10 ms
 release
@@ -201,7 +201,7 @@ wait briefly
 
 Expected:
 
-```text
+```
 LED0..LED7 = OFF
 LED8 = OFF
 ```
@@ -214,7 +214,7 @@ This confirms the physical reset path clears board-visible architectural state.
 
 Run the complete sequence at least three times:
 
-```text
+```
 reset
 -> start
 -> observe 0x22 + done
@@ -239,7 +239,7 @@ Press and continue holding start after the transaction completes.
 
 Expected:
 
-```text
+```
 one visible result only
 done remains latched
 no repeated visible reset/restart behavior
@@ -261,7 +261,7 @@ The test should not classify a sub-10-ms press as a functional failure.
 
 The meaningful validation is:
 
-```text
+```
 stable press > debounce interval
 -> exactly one accepted transaction
 ```
@@ -272,7 +272,7 @@ stable press > debounce interval
 
 For each test, record:
 
-```text
+```
 test name
 button action
 observed LED0..LED8 pattern
@@ -295,7 +295,7 @@ If the expected result does not appear, classify before changing RTL.
 
 Examples:
 
-```text
+```
 FPGA not programmed
 wrong bitstream
 device not connected
@@ -306,7 +306,7 @@ programming failed
 
 Examples:
 
-```text
+```
 wrong LED lights
 wrong button triggers
 clock not mapped correctly
@@ -316,7 +316,7 @@ clock not mapped correctly
 
 Examples:
 
-```text
+```
 press too short
 reset too short
 button held/released incorrectly
@@ -326,7 +326,7 @@ button held/released incorrectly
 
 Examples:
 
-```text
+```
 correct button accepted
 but result != 0x22
 done not latched
@@ -345,7 +345,7 @@ The accelerator performs no external data loading during this test.
 
 Therefore every valid transaction should produce exactly:
 
-```text
+```
 45
 -> requantized 34
 -> 0x22
@@ -359,19 +359,19 @@ Any other stable result is evidence of an integration problem.
 
 Button qualification:
 
-```text
+```
 approximately 10 ms
 ```
 
 Accelerator transaction:
 
-```text
+```
 90 ns
 ```
 
 Since:
 
-```text
+```
 10 ms >> 90 ns
 ```
 
@@ -385,7 +385,7 @@ No attempt should be made to judge 90 ns latency by eye.
 
 The initial hardware validation passes only if all of the following are observed:
 
-```text
+```
 programming succeeds
 
 reset:
@@ -416,14 +416,14 @@ Board LEDs prove board-visible end-to-end integration.
 
 They do not replace:
 
-```text
+```
 XSim
 post-route STA
 ```
 
 Instead the combined evidence is:
 
-```text
+```
 XSim:
 internal sequencing correct
 
@@ -454,7 +454,7 @@ The existing timing-closed bitstream is the artifact under test.
 
 Before board execution, the next analysis step should predict:
 
-```text
+```
 expected LED state after reset
 expected LED state after start
 expected persistence
@@ -481,7 +481,6 @@ Before Step 3, explain in your own words:
 7. What failure categories should be ruled out before changing RTL?
 8. Why is no RTL/XDC modification needed before this first board test?
 
-
 ---
 
 ## 21. Vivado operator walkthrough
@@ -504,7 +503,7 @@ If no target appears, stop here. Check board power, USB cable/connector, and Viv
 2. Choose **Program Device**.
 3. Browse to the latest Stage-2 bitstream generated by the current implementation run. In a standard Vivado project named `npu`, this is commonly under:
 
-   ```text
+   ```
    npu.runs/impl_1/basys3_top_level.bit
    ```
 
@@ -518,7 +517,7 @@ Do not regenerate the bitstream or change RTL/XDC during this first test.
 
 The verified XDC maps:
 
-```text
+```
 btn_start = Basys 3 center button (btnC, U18)
 btn_reset = Basys 3 down button   (btnD, U17)
 ```
@@ -545,3 +544,20 @@ If Auto Connect does not show the FPGA, do not attempt to program a device that 
 If programming fails, preserve the Vivado error text and stop.
 
 If programming succeeds but the LED pattern differs, record the exact LEDs that are ON/OFF before changing anything. Do not edit RTL or XDC until the observed failure is classified.
+
+---
+
+## 22. Hardware Manager connection checkpoint
+
+**Screenshot observation:** Vivado 2018.2 shows Hardware Manager as `unconnected`, while the Hardware pane lists `localhost (0)` with status `Connected`. The green banner says no hardware target is open. The Tcl console also shows the hardware-server connection to `TCP:localhost:3121`.
+
+**Interpretation:** The local Vivado hardware server is running and connected, but the Basys 3 FPGA target has not yet been opened. This is a normal intermediate state; it does not prove that the physical board has been detected.
+
+**Next operator action:**
+
+1. Click **Open target** in the green banner.
+2. Choose **Auto Connect**.
+3. Wait for target discovery.
+4. Confirm that a device resembling `xc7a35t_0` appears.
+
+Do not select **Program Device** until the FPGA target is visible. If Auto Connect finds no target, stop and check board power, the PROG USB connection, cable detection, and drivers. Preserve any Vivado messages for diagnosis.
