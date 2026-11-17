@@ -90,7 +90,7 @@ The generated symmetric INT8 data contract uses the range **[-127, +127]**. Alth
 
 The Basys 3 wrapper handles physical inputs and outputs. The convolution core handles transaction control, memory sequencing, arithmetic, and output capture.
 
-\`\`\`mermaid
+```mermaid
 flowchart TD
     CLK["100 MHz clock"]
     BTN["Basys 3 start / reset buttons"]
@@ -122,7 +122,7 @@ flowchart TD
     OUT --> LED
     FSM --> DONE
     TOP --> DONE
-\`\`\`
+```
 
 ### Main architectural blocks
 
@@ -137,8 +137,8 @@ flowchart TD
 
 There are two distinct controllers:
 
-- \`control_fsm\`: a five-state supervisory FSM in \`rtl/control/control_fsm.v\`. Its states are IDLE, LAUNCH, WAIT_ENGINE, CAPTURE_ACTIVATION, and DONE. Five states require three binary state bits because \(\lceil \log_2 5 \rceil = 3\).
-- \`memory_interface_dataflow\`: a seven-state memory/compute sequencing FSM in \`rtl/compute/memory_interface_dataflow.v\`. Seven states also fit in three bits because \(\lceil \log_2 7 \rceil = 3\).
+- `control_fsm`: a five-state supervisory FSM in `rtl/control/control_fsm.v`. Its states are IDLE, LAUNCH, WAIT_ENGINE, CAPTURE_ACTIVATION, and DONE. Five states require three binary state bits because \(\lceil \log_2 5 \rceil = 3\).
+- `memory_interface_dataflow`: a seven-state memory/compute sequencing FSM in `rtl/compute/memory_interface_dataflow.v`. Seven states also fit in three bits because \(\lceil \log_2 7 \rceil = 3\).
 
 The arithmetic data does not pass through the supervisory FSM. The FSM controls when computation starts and when the completed activation is captured.
 
@@ -166,7 +166,7 @@ The additional Stage-2 compute pipeline does not add memory requests.
 
 The current integrated engine uses the following sequence:
 
-\`\`\`text
+```text
 Synchronous operand BRAM
         |
         v
@@ -186,7 +186,7 @@ INT32 accumulator
         |
         v
 Final convolution result
-\`\`\`
+```
 
 The three packed words produce three partial sums:
 
@@ -256,8 +256,8 @@ M \approx \frac{M_{INT}}{2^F}
 
 where:
 
-- \`M_INT\` is the 24-bit unsigned coefficient.
-- \`FRAC_BITS\` (\(F\)) is the compile-time right-shift amount.
+- `M_INT` is the 24-bit unsigned coefficient.
+- `FRAC_BITS` (\(F\)) is the compile-time right-shift amount.
 - The supported parameter range in the RTL/Python contract is \(0 \leq F \leq 42\).
 
 For a positive accumulator and \(F > 0\), the rounded value is:
@@ -280,33 +280,33 @@ q_{pre}, & 0 < q_{pre} \leq 127
 \end{cases}
 \]
 
-The integrated design uses \`requantize_relu_pipelined.v\`, which registers the 42-bit multiplication result before the rounding, shift, and saturation logic. The convolution integration module then captures the resulting INT8 value in its architectural \`activation_out\` register.
+The integrated design uses `requantize_relu_pipelined.v`, which registers the 42-bit multiplication result before the rounding, shift, and saturation logic. The convolution integration module then captures the resulting INT8 value in its architectural `activation_out` register.
 
 ---
 
 ## Current demonstration configuration
 
-The board demonstration currently uses fixed operands initialized in \`rtl/memory/operand_bram_dual_read.v\`.
+The board demonstration currently uses fixed operands initialized in `rtl/memory/operand_bram_dual_read.v`.
 
 ### Activation values
 
-\`[1, 2, 3, 4, 5, 6, 7, 8, 9]\`
+`[1, 2, 3, 4, 5, 6, 7, 8, 9]`
 
 | Memory word | Packed hexadecimal value | Valid lanes |
 |---|---|---|
-| Activation word 0 | \`0x04030201\` | 1, 2, 3, 4 |
-| Activation word 1 | \`0x08070605\` | 5, 6, 7, 8 |
-| Activation word 2 | \`0x00000009\` | 9, 0, 0, 0 |
+| Activation word 0 | `0x04030201` | 1, 2, 3, 4 |
+| Activation word 1 | `0x08070605` | 5, 6, 7, 8 |
+| Activation word 2 | `0x00000009` | 9, 0, 0, 0 |
 
 ### Weight values
 
-\`[1, 1, 1, 1, 1, 1, 1, 1, 1]\`
+`[1, 1, 1, 1, 1, 1, 1, 1, 1]`
 
 | Memory word | Packed hexadecimal value | Valid lanes |
 |---|---|---|
-| Weight word 0 | \`0x01010101\` | 1, 1, 1, 1 |
-| Weight word 1 | \`0x01010101\` | 1, 1, 1, 1 |
-| Weight word 2 | \`0x00000001\` | 1, 0, 0, 0 |
+| Weight word 0 | `0x01010101` | 1, 1, 1, 1 |
+| Weight word 1 | `0x01010101` | 1, 1, 1, 1 |
+| Weight word 2 | `0x00000001` | 1, 0, 0, 0 |
 
 Lane order is little-lane order: lane 0 occupies bits [7:0], lane 1 occupies [15:8], lane 2 occupies [23:16], and lane 3 occupies [31:24].
 
@@ -320,8 +320,8 @@ acc = 1+2+3+4+5+6+7+8+9 = 45
 
 The Basys 3 top-level overrides the requantization parameters with:
 
-- \`M_INT = 3\`
-- \`FRAC_BITS = 2\)
+- `M_INT = 3`
+- `FRAC_BITS = 2\)
 
 Therefore:
 
@@ -333,9 +333,9 @@ q = (45 \times 3 + 2) \gg 2
 
 The expected output is:
 
-- Decimal: \`34\`
-- Hexadecimal: \`0x22\`
-- Binary: \`0010_0010\`
+- Decimal: `34`
+- Hexadecimal: `0x22`
+- Binary: `0010_0010`
 
 Thus result LED bits 1 and 5 illuminate. The completion indicator is LED8.
 
@@ -345,15 +345,15 @@ This is a deterministic demonstration vector, not a trained neural-network model
 
 ## Basys 3 board interface
 
-The current top-level module is \`rtl/top/basys3_top_level.v\`. The XDC file is \`vivado/constraints/basys3_top_level.xdc\`.
+The current top-level module is `rtl/top/basys3_top_level.v`. The XDC file is `vivado/constraints/basys3_top_level.xdc`.
 
 ### Clock and pushbuttons
 
 | Top-level signal | Basys 3 resource | Package pin | Purpose |
 |---|---|---|---|
-| \`clk_100mhz\` | 100 MHz oscillator | W5 | System clock |
-| \`btn_start\` | Center button (btnC) | U18 | Start a convolution |
-| \`btn_reset\` | Down button (btnD) | U17 | Reset the design |
+| `clk_100mhz` | 100 MHz oscillator | W5 | System clock |
+| `btn_start` | Center button (btnC) | U18 | Start a convolution |
+| `btn_reset` | Down button (btnD) | U17 | Reset the design |
 
 The clock period is constrained to 10 ns:
 
@@ -375,17 +375,17 @@ Simulation reduces the debounce threshold to four cycles while retaining the rea
 
 | Top-level signal | Basys 3 LED | Package pin |
 |---|---|---|
-| \`led_result[0]\` | LED0 | U16 |
-| \`led_result[1]\` | LED1 | E19 |
-| \`led_result[2]\` | LED2 | U19 |
-| \`led_result[3]\` | LED3 | V19 |
-| \`led_result[4]\` | LED4 | W18 |
-| \`led_result[5]\` | LED5 | U15 |
-| \`led_result[6]\` | LED6 | U14 |
-| \`led_result[7]\` | LED7 | V14 |
-| \`led_done\` | LED8 | V13 |
+| `led_result[0]` | LED0 | U16 |
+| `led_result[1]` | LED1 | E19 |
+| `led_result[2]` | LED2 | U19 |
+| `led_result[3]` | LED3 | V19 |
+| `led_result[4]` | LED4 | W18 |
+| `led_result[5]` | LED5 | U15 |
+| `led_result[6]` | LED6 | U14 |
+| `led_result[7]` | LED7 | V14 |
+| `led_done` | LED8 | V13 |
 
-All 12 exposed board ports use \`LVCMOS33\`. The XDC also sets \`CONFIG_VOLTAGE = 3.3\` and \`CFGBVS = VCCO\`.
+All 12 exposed board ports use `LVCMOS33`. The XDC also sets `CONFIG_VOLTAGE = 3.3` and `CFGBVS = VCCO`.
 
 **No slide switches are currently connected to the NPU inputs.** The current board interface uses two pushbuttons and nine LEDs. Activations and weights are initialized in RTL memory.
 
@@ -393,9 +393,9 @@ All 12 exposed board ports use \`LVCMOS33\`. The XDC also sets \`CONFIG_VOLTAGE 
 
 - A start press is synchronized, debounced, and converted into a one-clock rising-edge pulse.
 - A start pulse received while the accelerator is busy is discarded; it is not queued.
-- The core's raw \`done\` is a one-cycle event.
-- The board wrapper stores that event in \`done_latched\`, so LED8 remains on until a new start or reset.
-- The result LEDs are driven from the architectural \`activation_out\` register.
+- The core's raw `done` is a one-cycle event.
+- The board wrapper stores that event in `done_latched`, so LED8 remains on until a new start or reset.
+- The result LEDs are driven from the architectural `activation_out` register.
 - Reset is synchronized/debounced at the board boundary and then applied as a synchronous active-high core reset.
 
 ---
@@ -408,13 +408,13 @@ The current design supports **configuration-time changes**, not live editing thr
 
 Edit:
 
-\`rtl/memory/operand_bram_dual_read.v\`
+`rtl/memory/operand_bram_dual_read.v`
 
 Update the three activation initialization words:
 
-- \`mem[0]\`
-- \`mem[1]\`
-- \`mem[2]\`
+- `mem[0]`
+- `mem[1]`
+- `mem[2]`
 
 Keep the nine values packed as 4 + 4 + 1. The fourth lane of the final word must remain zero unless the architecture and padding rules are intentionally changed.
 
@@ -422,19 +422,19 @@ Keep the nine values packed as 4 + 4 + 1. The fourth lane of the final word must
 
 In the same file, update:
 
-- \`mem[256]\`
-- \`mem[257]\`
-- \`mem[258]\`
+- `mem[256]`
+- `mem[257]`
+- `mem[258]`
 
-These are the three weight words because \`WEIGHT_BASE = 256\`.
+These are the three weight words because `WEIGHT_BASE = 256`.
 
 ### 3. Pack signed INT8 values correctly
 
-The helper functions in \`python/quantization/int8_quantizer.py\` include:
+The helper functions in `python/quantization/int8_quantizer.py` include:
 
-- \`pack_four_int8(values)\`
-- \`pack_3x3_to_words(values)\`
-- \`format_mem_words(words)\`
+- `pack_four_int8(values)`
+- `pack_3x3_to_words(values)`
+- `format_mem_words(words)`
 
 They pack four signed 8-bit values per 32-bit word, with lane 0 in the least-significant byte. Negative values are represented in two's-complement form.
 
@@ -442,16 +442,16 @@ After editing the RTL initialization values, rerun the Python reference test, ru
 
 ### 4. Change the requantization scale
 
-Edit the parameters passed by \`rtl/top/basys3_top_level.v\` to \`convolution_integration\`:
+Edit the parameters passed by `rtl/top/basys3_top_level.v` to `convolution_integration`:
 
-\`\`\`verilog
+```verilog
 .M_INT     (24'd3),
 .FRAC_BITS (2)
-\`\`\`
+```
 
-Use the Python helper \`derive_requantization_params(s_a, s_w, s_out)\` to derive a compatible \`M_INT\` and \`FRAC_BITS\` from the quantization scales. Keep \`M_INT\` within the unsigned 24-bit range and \`FRAC_BITS\` within 0..42.
+Use the Python helper `derive_requantization_params(s_a, s_w, s_out)` to derive a compatible `M_INT` and `FRAC_BITS` from the quantization scales. Keep `M_INT` within the unsigned 24-bit range and `FRAC_BITS` within 0..42.
 
-The board top-level values override the defaults in \`convolution_integration\`. Changing only a default parameter in a lower-level module will not change the board demonstration if the top-level override remains in place.
+The board top-level values override the defaults in `convolution_integration`. Changing only a default parameter in a lower-level module will not change the board demonstration if the top-level override remains in place.
 
 **Every change to memory initialization or compile-time requantization parameters requires rebuilding and reprogramming the bitstream.** Runtime operand loading, UART, a host interface, and switch-based data entry are not implemented in the current repository.
 
@@ -461,7 +461,7 @@ The board top-level values override the defaults in \`convolution_integration\`.
 
 The following tree reflects the files currently present on the default branch. It intentionally does not list planned directories that do not yet exist.
 
-\`\`\`text
+```text
 low-power-npu-basys3/
 ├── README.md
 ├── PROJECT_PLAN.md
@@ -519,11 +519,11 @@ low-power-npu-basys3/
     ├── verification/
     ├── analysis/
     └── design_review/
-\`\`\`
+```
 
 The repository currently contains 14 RTL files, 8 unit testbenches, 3 integration testbenches, 2 Python files, 3 XDC files, and a Vivado XDC verification Tcl script. The documentation directories contain the detailed learning, design, verification, analysis, and review records.
 
-There is currently no checked-in \`mem/\` directory, generated memory image, Vivado \`.xpr\` project, automated full-build Tcl flow, or generated bitstream. The board demonstration operands are initialized directly in RTL.
+There is currently no checked-in `mem/` directory, generated memory image, Vivado `.xpr` project, automated full-build Tcl flow, or generated bitstream. The board demonstration operands are initialized directly in RTL.
 
 ---
 
@@ -531,28 +531,28 @@ There is currently no checked-in \`mem/\` directory, generated memory image, Viv
 
 | File | Responsibility |
 |---|---|
-| \`rtl/primitives/int8_arithmetic.v\` | Standalone signed INT8 multiplication and INT16-to-INT32 sign extension primitive |
-| \`rtl/primitives/int32_accumulator.v\` | Standalone enabled INT32 accumulator |
-| \`rtl/compute/4mac_datapath.v\` | Standalone four-MAC scheduling/datapath exercise |
-| \`rtl/compute/memory_interface_dataflow.v\` | Integrated three-word convolution sequencing, four product registers, reduction, partial-sum pipeline, and INT32 accumulation |
-| \`rtl/activation/relu_activation.v\` | Combinational INT32 ReLU with signed INT8 saturation |
-| \`rtl/activation/requantize_relu.v\` | Combinational fixed-point requantization, rounding, ReLU, and saturation reference implementation |
-| \`rtl/activation/requantize_relu_pipelined.v\` | Integrated timing-refined requantization implementation |
-| \`rtl/activation/relu_timing_wrapper.v\` | Register-to-register ReLU timing measurement wrapper |
-| \`rtl/activation/requantize_timing_wrapper.v\` | Requantization timing/resource measurement wrapper |
-| \`rtl/memory/operand_bram_dual_read.v\` | 512 × 32 synchronous operand memory with activation and weight read ports |
-| \`rtl/control/control_fsm.v\` | Supervisory transaction controller |
-| \`rtl/infrastructure/button_conditioner.v\` | Two-flop synchronizer, debounce counter, and rising-edge pulse generator |
-| \`rtl/top/convolution_integration.v\` | Integrates controller, memory dataflow engine, requantizer, and registered output |
-| \`rtl/top/basys3_top_level.v\` | Basys 3 board wrapper, button conditioning, operand memory, result LEDs, and latched done LED |
+| `rtl/primitives/int8_arithmetic.v` | Standalone signed INT8 multiplication and INT16-to-INT32 sign extension primitive |
+| `rtl/primitives/int32_accumulator.v` | Standalone enabled INT32 accumulator |
+| `rtl/compute/4mac_datapath.v` | Standalone four-MAC scheduling/datapath exercise |
+| `rtl/compute/memory_interface_dataflow.v` | Integrated three-word convolution sequencing, four product registers, reduction, partial-sum pipeline, and INT32 accumulation |
+| `rtl/activation/relu_activation.v` | Combinational INT32 ReLU with signed INT8 saturation |
+| `rtl/activation/requantize_relu.v` | Combinational fixed-point requantization, rounding, ReLU, and saturation reference implementation |
+| `rtl/activation/requantize_relu_pipelined.v` | Integrated timing-refined requantization implementation |
+| `rtl/activation/relu_timing_wrapper.v` | Register-to-register ReLU timing measurement wrapper |
+| `rtl/activation/requantize_timing_wrapper.v` | Requantization timing/resource measurement wrapper |
+| `rtl/memory/operand_bram_dual_read.v` | 512 × 32 synchronous operand memory with activation and weight read ports |
+| `rtl/control/control_fsm.v` | Supervisory transaction controller |
+| `rtl/infrastructure/button_conditioner.v` | Two-flop synchronizer, debounce counter, and rising-edge pulse generator |
+| `rtl/top/convolution_integration.v` | Integrates controller, memory dataflow engine, requantizer, and registered output |
+| `rtl/top/basys3_top_level.v` | Basys 3 board wrapper, button conditioning, operand memory, result LEDs, and latched done LED |
 
-**Integration note:** the standalone \`four_mac_datapath\`, \`int8_arithmetic\`, and \`int32_accumulator\` modules are independently useful RTL learning/verification blocks. The final integrated convolution path is implemented by \`memory_interface_dataflow\`; it contains its own packed-lane multiplication, reduction, and accumulation logic. Similarly, the integrated path uses \`requantize_relu_pipelined\`, not the standalone combinational ReLU timing wrapper.
+**Integration note:** the standalone `four_mac_datapath`, `int8_arithmetic`, and `int32_accumulator` modules are independently useful RTL learning/verification blocks. The final integrated convolution path is implemented by `memory_interface_dataflow`; it contains its own packed-lane multiplication, reduction, and accumulation logic. Similarly, the integrated path uses `requantize_relu_pipelined`, not the standalone combinational ReLU timing wrapper.
 
 ---
 
 ## Python reference model
 
-### \`python/quantization/int8_quantizer.py\`
+### `python/quantization/int8_quantizer.py`
 
 This module provides software-side numerical helpers independent of the RTL implementation:
 
@@ -565,21 +565,21 @@ This module provides software-side numerical helpers independent of the RTL impl
 - ReLU/requantization reference behavior.
 - Four-lane INT8 packing and memory-word formatting.
 
-### \`python/verification/test_int8_quantizer.py\`
+### `python/verification/test_int8_quantizer.py`
 
 Directed Python checks cover scale derivation, signed rounding, clipping, maximum 3 × 3 accumulation, coefficient selection, memory packing, and requantization corner cases.
 
 Run from the repository root:
 
-\`\`\`bash
+```bash
 python python/verification/test_int8_quantizer.py
-\`\`\`
+```
 
 The expected successful terminal summary is:
 
-\`\`\`text
+```text
 PY_INT8_QUANTIZER_PASS: all directed checks passed
-\`\`\`
+```
 
 ---
 
@@ -591,20 +591,20 @@ Verification is organized at three levels.
 
 | Testbench | Main target |
 |---|---|
-| \`tb/unit/tb_int8_arithmetic.v\` | Signed INT8 multiplication and sign extension |
-| \`tb/unit/tb_int32_accumulator.v\` | Accumulator reset, enable, and accumulation |
-| \`tb/unit/tb_4mac_datapath.v\` | Standalone four-MAC scheduling and result |
-| \`tb/unit/tb_relu_activation.v\` | ReLU and INT8 saturation |
-| \`tb/unit/tb_requantize_relu.v\` | Combinational fixed-point requantization |
-| \`tb/unit/tb_requantize_relu_pipelined.v\` | Product pipeline, rounding, saturation, reset, and back-to-back samples |
-| \`tb/unit/tb_control_fsm.v\` | Supervisory control protocol |
-| \`tb/unit/tb_relu_timing_wrapper.v\` | Registered timing wrapper behavior |
+| `tb/unit/tb_int8_arithmetic.v` | Signed INT8 multiplication and sign extension |
+| `tb/unit/tb_int32_accumulator.v` | Accumulator reset, enable, and accumulation |
+| `tb/unit/tb_4mac_datapath.v` | Standalone four-MAC scheduling and result |
+| `tb/unit/tb_relu_activation.v` | ReLU and INT8 saturation |
+| `tb/unit/tb_requantize_relu.v` | Combinational fixed-point requantization |
+| `tb/unit/tb_requantize_relu_pipelined.v` | Product pipeline, rounding, saturation, reset, and back-to-back samples |
+| `tb/unit/tb_control_fsm.v` | Supervisory control protocol |
+| `tb/unit/tb_relu_timing_wrapper.v` | Registered timing wrapper behavior |
 
 ### Integration testbenches
 
-- \`tb/integration/tb_memory_interface_dataflow.v\`: memory request sequence, returned word alignment, products, partial sums, and accumulator result.
-- \`tb/integration/tb_convolution_integration.v\`: controller-to-engine-to-requantizer integration and output capture.
-- \`tb/integration/tb_basys3_top_level.v\`: board wrapper, button conditioning, busy masking, memory protocol, pipeline alignment, reset/recovery, latency, result LEDs, and persistent completion indication.
+- `tb/integration/tb_memory_interface_dataflow.v`: memory request sequence, returned word alignment, products, partial sums, and accumulator result.
+- `tb/integration/tb_convolution_integration.v`: controller-to-engine-to-requantizer integration and output capture.
+- `tb/integration/tb_basys3_top_level.v`: board wrapper, button conditioning, busy masking, memory protocol, pipeline alignment, reset/recovery, latency, result LEDs, and persistent completion indication.
 
 The latest Stage-2 top-level behavioral verification record reports zero errors. It checks the four product lanes for each of the three words, partial sums 10, 26, and 9, accumulator progression 0 → 10 → 36 → 45, final activation 34, exactly three paired memory requests in address order 0 → 1 → 2, and 90 ns accepted-start-to-done latency.
 
@@ -612,13 +612,13 @@ A passing testbench is evidence for the assertions it actually checks; it is not
 
 ### Vivado XDC verification
 
-\`tb/scripts/verify_basys3_xdc.tcl\` checks the live Vivado design/constraint database. It verifies port resolution, package pins, I/O standards, unique pin use, the 100 MHz clock object, and configuration properties.
+`tb/scripts/verify_basys3_xdc.tcl` checks the live Vivado design/constraint database. It verifies port resolution, package pins, I/O standards, unique pin use, the 100 MHz clock object, and configuration properties.
 
 Run it only after opening the Basys 3 design in Vivado with the XDC loaded, for example after synthesis:
 
-\`\`\`tcl
+```tcl
 source tb/scripts/verify_basys3_xdc.tcl
-\`\`\`
+```
 
 The documented XDC verification reports all 12 board ports resolved, 12 unique package pins, LVCMOS33 on all ports, one 10 ns primary clock, and the expected configuration properties. This is constraint verification, not a substitute for timing or hardware validation.
 
@@ -631,10 +631,10 @@ The repository contains RTL and constraints, but it does not currently include a
 ### Create the hardware project
 
 1. Open AMD/Xilinx Vivado and create an RTL project.
-2. Select the Basys 3 device \`XC7A35T-1CPG236C\`.
-3. Add the Verilog files under \`rtl/\` as design sources.
-4. Set \`basys3_top_level\` as the synthesis top module.
-5. Add \`vivado/constraints/basys3_top_level.xdc\` as the active constraints file.
+2. Select the Basys 3 device `XC7A35T-1CPG236C`.
+3. Add the Verilog files under `rtl/` as design sources.
+4. Set `basys3_top_level` as the synthesis top module.
+5. Add `vivado/constraints/basys3_top_level.xdc` as the active constraints file.
 6. Run elaboration and synthesis.
 7. Run implementation and inspect setup, hold, and pulse-width timing.
 8. Generate the bitstream only after the implementation checks are satisfactory.
@@ -645,12 +645,12 @@ Do not add testbench files as synthesis design sources.
 ### Run behavioral simulation
 
 1. Add the RTL sources to the Vivado project.
-2. Add the required testbench from \`tb/unit/\` or \`tb/integration/\` as a simulation source.
+2. Add the required testbench from `tb/unit/` or `tb/integration/` as a simulation source.
 3. Select the corresponding testbench module as the simulation top.
 4. Run behavioral simulation in XSim.
 5. Inspect the testbench checks and waveforms; explain the signal relationships behind each pass result.
 
-For the complete board-wrapper regression, select \`tb_basys3_top_level\` from \`tb/integration/tb_basys3_top_level.v\`.
+For the complete board-wrapper regression, select `tb_basys3_top_level` from `tb/integration/tb_basys3_top_level.v`.
 
 ### Implementation evidence to retain
 
@@ -670,7 +670,7 @@ A successful bitstream generation alone is not proof of timing closure or correc
 
 ## Measured implementation results
 
-The following figures are recorded in \`docs/design_review/basys3_timing_closure_stage2.md\`. They describe the documented Stage-2 implementation and must not be confused with the earlier timing-closure iterations.
+The following figures are recorded in `docs/design_review/basys3_timing_closure_stage2.md`. They describe the documented Stage-2 implementation and must not be confused with the earlier timing-closure iterations.
 
 ### Timing-closure progression
 
@@ -714,7 +714,7 @@ The two RAMB18E1 blocks implement the dual-read operand storage. The documented 
 
 ### Transaction latency derivation
 
-The Stage-2 behavioral verification measures nine clock cycles from the accepted \`core_start\` edge to the raw completion event.
+The Stage-2 behavioral verification measures nine clock cycles from the accepted `core_start` edge to the raw completion event.
 
 At 100 MHz:
 
@@ -748,53 +748,53 @@ The timing-closure iterations therefore changed the measured latency from 70 ns 
 
 ## Engineering documentation
 
-The \`docs/\` directory is the detailed engineering record. The README is an entry point, not a replacement for the module-level derivations and verification evidence.
+The `docs/` directory is the detailed engineering record. The README is an entry point, not a replacement for the module-level derivations and verification evidence.
 
-### Learning — \`docs/learning/\`
+### Learning — `docs/learning/`
 
 Conceptual explanations and understanding checkpoints, including:
 
-- \`int8_arithmetic.md\`
-- \`int32_accumulator.md\`
-- \`4mac_scheduling.md\`
-- \`int8_quantization.md\`
-- \`relu_activation.md\`
-- \`memory_interface_dataflow.md\`
-- \`convolution_integration.md\`
-- \`control_fsm.md\`
-- \`basys3_top_level.md\`
-- \`basys3_timing_closure.md\`
+- `int8_arithmetic.md`
+- `int32_accumulator.md`
+- `4mac_scheduling.md`
+- `int8_quantization.md`
+- `relu_activation.md`
+- `memory_interface_dataflow.md`
+- `convolution_integration.md`
+- `control_fsm.md`
+- `basys3_top_level.md`
+- `basys3_timing_closure.md`
 
-### Design — \`docs/design/\`
+### Design — `docs/design/`
 
 RTL architecture, interfaces, state sequencing, pipeline boundaries, timing refinements, and implementation decisions.
 
-### Verification — \`docs/verification/\`
+### Verification — `docs/verification/`
 
 Test plans, testbench design, XSim measurements, numerical checks, memory protocol checks, reset/recovery behavior, and timing-closure verification. Particularly useful current records include:
 
-- \`basys3_timing_closure_stage2.md\`
-- \`basys3_timing_closure_stage2_measurement.md\`
-- \`basys3_xdc_measurement.md\`
-- \`basys3_top_level_simulation.md\` (earlier 70 ns baseline)
+- `basys3_timing_closure_stage2.md`
+- `basys3_timing_closure_stage2_measurement.md`
+- `basys3_xdc_measurement.md`
+- `basys3_top_level_simulation.md` (earlier 70 ns baseline)
 
-### Analysis — \`docs/analysis/\`
+### Analysis — `docs/analysis/`
 
 Mathematical predictions, cycle schedules, resource estimates, timing analysis, measured-versus-predicted updates, and hardware-validation predictions.
 
-### Design review — \`docs/design_review/\`
+### Design review — `docs/design_review/`
 
 Review decisions and acceptance records. The current timing-closure review is:
 
-- \`docs/design_review/basys3_timing_closure_stage2.md\`
+- `docs/design_review/basys3_timing_closure_stage2.md`
 
 The top-level board integration review is:
 
-- \`docs/design_review/basys3_top_level.md\`
+- `docs/design_review/basys3_top_level.md`
 
 ### Project roadmap
 
-See [\`PROJECT_PLAN.md\`](PROJECT_PLAN.md) for the learning/build roadmap, reference parameters, module workflow, and project success criteria.
+See [`PROJECT_PLAN.md`](PROJECT_PLAN.md) for the learning/build roadmap, reference parameters, module workflow, and project success criteria.
 
 ---
 
@@ -802,12 +802,12 @@ See [\`PROJECT_PLAN.md\`](PROJECT_PLAN.md) for the learning/build roadmap, refer
 
 1. **Single-channel scope:** the current integrated convolution is 3 × 3 with one input channel and one output channel. General multi-channel convolution is not implemented.
 2. **Fixed demonstration operands:** activations and weights are initialized in RTL. There is no runtime memory-loading interface or switch-based operand editor.
-3. **Compile-time quantization:** \`M_INT\` and \`FRAC_BITS\` are parameters. Changing them requires rebuilding the bitstream.
+3. **Compile-time quantization:** `M_INT` and `FRAC_BITS` are parameters. Changing them requires rebuilding the bitstream.
 4. **Bounded input range:** the requantizer's 18-bit positive magnitude relies on the symmetric INT8 range and the 3 × 3 single-channel maximum of 145161. A wider workload requires a new range derivation and RTL review.
 5. **Physical board test pending:** XSim and Vivado implementation evidence do not prove that the actual board buttons and LEDs have been tested successfully.
 6. **Power not yet characterized:** the project is motivated by low-power hardware design, but no measured power result is claimed here.
 7. **Tool versions are not pinned:** the repository does not currently provide a Vivado version lock, Python requirements file, or automated environment setup.
-8. **Build automation is incomplete:** no Vivado \`.xpr\`, generated bitstream, or complete scripted build flow is checked in.
+8. **Build automation is incomplete:** no Vivado `.xpr`, generated bitstream, or complete scripted build flow is checked in.
 9. **Standalone learning blocks:** some primitive and timing-wrapper modules are independently tested but are not instantiated in the final integrated board datapath.
 10. **License not specified:** no repository license file is currently present.
 
@@ -819,7 +819,7 @@ These limitations are intentional documentation boundaries: a planned feature or
 
 The project follows an architecture-first sequence:
 
-\`\`\`text
+```text
 TEACH
   -> DESIGN
   -> ANALYZE / PREDICT
@@ -832,7 +832,7 @@ TEACH
   -> COMPARE MEASURED VS PREDICTED
   -> DESIGN REVIEW
   -> KNOWLEDGE TEST
-\`\`\`
+```
 
 Non-negotiable engineering practices:
 
@@ -849,4 +849,4 @@ The goal is an accelerator whose numerical behavior, control protocol, memory tr
 
 ## License
 
-No \`LICENSE\` file is currently present in this repository. Until a license is added, reuse and redistribution permissions have not been explicitly granted.
+No `LICENSE` file is currently present in this repository. Until a license is added, reuse and redistribution permissions have not been explicitly granted.
