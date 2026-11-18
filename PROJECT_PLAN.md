@@ -1,66 +1,37 @@
 # Low-Power INT8 NPU on Basys 3
 
-## Project Roadmap
+## Final Project Status
 
-This project is an architecture-first hardware/software co-design of a low-power INT8 neural processing accelerator for the Basys 3 / Artix-7 FPGA.
+**COMPLETED — 2026-11-18**
+The project owner confirms all planned phases are complete, the final bitstream was programmed onto the physical Digilent Basys 3 board, and expected hardware output was observed. This supersedes the former Phase 8 active status.
 
-## Current Phase
+### Final board demonstration
+- Board: Digilent Basys 3 / XC7A35T-1CPG236C
+- Clock target: 100 MHz (10 ns period)
+- Single-channel 3×3 INT8 convolution; four parallel product lanes
+- Signed INT16 products; signed INT32 accumulation
+- Fixed-point requantization, ReLU and INT8 saturation
+- Conditioned start/reset buttons; result and completion LEDs
+- Demonstration: activations 1–9, all-one weights, M_INT=3, FRAC_BITS=2
+- Expected arithmetic: accumulator 45 → rounded output 34 (0x22)
+- Physical output observed: owner-confirmed
 
-**Active Phase: Phase 8 — Basys 3 Top-Level Integration, Physical Validation, and Final Optimization**
+### Evidence qualification
+The board photograph supplied on 2026-11-18 documents the physical Basys 3 setup. Successful programming and expected visible output are owner-reported evidence. No new Vivado implementation report, programming log, or raw measurement table was supplied.
 
-Phase 7 completed convolution integration through teaching, design, prediction, RTL, verification, XSim measurement, measured-vs-predicted analysis, design review, and self-test. Phase 8 begins with core-only physical characterization of `convolution_integration`, then moves to the Basys-3 board top, final verification, implementation measurement, low-power optimization, and final design review. The core-only Phase-8 baseline synthesis/implementation has been completed and the `basys3_top_level` design step is now active.
+**Historical timing caveat:** docs/analysis/basys3_top_level.md records WNS = -3.453 ns, TNS = -99.753 ns and 43 failing setup endpoints against the 10 ns clock requirement. Preserve this historical measured result. The newly reported board demonstration does not alter it. A newer timing report is required before claiming formal 100 MHz setup closure.
+No new resource, power, latency or Fmax values are invented.
 
-### Reference Parameters
+## Roadmap and workflow (completed)
+Learning → architecture/design → prediction → RTL → unit/integration verification → simulation → synthesis/implementation → timing/resource analysis → bitstream generation → physical Basys 3 programming and demonstration → final documentation. The project owner reports all phases complete.
 
-- Target FPGA: XC7A35T-1CPG236C
-- Clock: 100 MHz
-- Convolution: 3x3
-- Input channels: 1
-- Output channels: 1
-- MAC units: 4
-- Weight precision: INT8
-- Activation precision: INT8
-- Product precision: INT16
-- Accumulator precision: INT32
-- Activation: ReLU
-- Memory: FPGA BRAM
-- Control: FSM
+## Reference parameters
+- Target FPGA: XC7A35T-1CPG236C; clock target: 100 MHz
+- Convolution: 3×3; input channels: 1; output channels: 1
+- Four parallel INT8 product lanes; INT16 products; INT32 accumulator
+- ReLU; FPGA BRAM; FSM control
 
-## Learning Phase
-
-1. INT8 signed arithmetic and two's complement
-2. INT8 x INT8 multiplication and INT16 product range
-3. INT32 accumulation and overflow bounds
-4. Single MAC datapath
-5. Four-MAC parallel architecture and scheduling
-6. ReLU
-7. 3x3 convolution and sliding-window scheduling
-8. BRAM organization, addressing, and latency
-9. FSM control and cycle sequencing
-10. FP32-to-INT8 quantization
-11. Python golden-model verification
-12. FPGA resource, timing, and low-power fundamentals
-
-Each learning topic produces a note in `docs/learning/` and requires the learner to restate the concept before RTL proceeds.
-
-## Building Phase
-
-B1 Arithmetic primitives -> B2 multiplier -> B3 accumulator -> B4 MAC -> B5 four-MAC datapath -> B6 ReLU -> B7 BRAM interface -> B8 convolution engine -> B9 FSM controller -> B10 quantized data generation -> B11 integration -> B12 Basys 3 top level -> B13 verification -> B14 measurement -> B15 low-power optimization -> B16 final design review.
-
-## Mandatory Module Workflow
-
-TEACH -> DESIGN -> ANALYZE/PREDICT -> USER CONFIRMS UNDERSTANDING -> RTL -> VERIFY -> TESTBENCH -> SIMULATE -> MEASURE -> COMPARE MEASURED VS PREDICTED -> REVIEW -> SELF-TEST.
-
-## Hard Gates
-
-- No complete RTL before concept and derivation.
-- No simulation before prediction.
-- A passing testbench must be explained signal-by-signal.
-- All assumptions must be explicitly labeled.
-- The learner must explain the concept back before advancing.
-
-## Repository Structure
-
+## Repository structure
 ```text
 rtl/{primitives,compute,activation,memory,control,infrastructure,top}
 tb/{unit,integration,scripts}
@@ -70,6 +41,11 @@ vivado/constraints/
 docs/{learning,design,verification,analysis,design_review}
 ```
 
-## Success Criteria
-
-The completed accelerator must have explainable arithmetic widths, scheduling, memory traffic, cycle count, FPGA resource usage, timing behavior, and low-power decisions. Predictions must be validated against Vivado/XSim measurements.
+## Final handoff
+- [x] All phases reported complete by project owner
+- [x] Bitstream programmed on physical Basys 3 (owner-confirmed)
+- [x] Expected board output observed (owner-confirmed)
+- [x] README and learning-document status updated
+- [ ] Add board photograph to repository as a tracked asset if desired
+- [ ] Attach newer Vivado timing/utilization reports if formal measured sign-off is required
+- [ ] Add raw repeated-trial observations and programming log if available
