@@ -4,7 +4,7 @@ An architecture-first hardware/software co-design project for a small INT8 convo
 
 The project emphasizes understanding arithmetic, datapath scheduling, synchronous memory behavior, control sequencing, verification, synthesis, and timing closure—not simply producing RTL that appears to work.
 
-> **Current repository milestone:** Phase 8 — Basys 3 top-level integration, physical validation, and final optimization. The Stage-2 timing-closure design review reports successful 100 MHz setup/hold/pulse-width closure. Behavioral and Vivado constraint verification are documented as passing. Physical operation on the actual Basys 3 board remains to be validated.
+> **Project status (2026-11-18): COMPLETED.** The project owner confirms all phases are complete, the bitstream was programmed onto the physical Basys 3, and expected output was observed. The supplied board photograph documents the physical setup. This is owner-reported evidence; no new Vivado report or raw measurement file was supplied. The historical post-route top-level timing report in docs/analysis/basys3_top_level.md records a setup-timing failure at 100 MHz (WNS = -3.453 ns). Successful programming and visible output are distinct from formal 100 MHz timing sign-off; do not call the historical STA result a pass without a newer report.
 
 ---
 
@@ -850,3 +850,16 @@ The goal is an accelerator whose numerical behavior, control protocol, memory tr
 ## License
 
 No `LICENSE` file is currently present in this repository. Until a license is added, reuse and redistribution permissions have not been explicitly granted.
+
+
+---
+
+## Final project completion record — 2026-11-18
+
+**Status: COMPLETED — physical Basys 3 demonstration reported successful.** The project owner confirms that all planned phases are complete, the final bitstream was programmed onto the physical board, and expected hardware output was observed.
+
+- Fixed demonstration vector: activations 1–9, all-one weights, M_INT=3, FRAC_BITS=2; accumulator 45; rounded INT8 result 34 (0x22). Expected result indicators: LED1 and LED5; LED8: latched completion.
+- Board behavior and bitstream programming are owner-reported. The board photograph supplied in the project conversation documents the physical setup; it is not a programming log or raw test table.
+- Historical timing qualification: docs/analysis/basys3_top_level.md records WNS = -3.453 ns, TNS = -99.753 ns and 43 failing setup endpoints at the 10 ns clock constraint. No newer timing report was supplied. Board-visible functional success does not change those STA measurements.
+- No new LUT/FF/BRAM/DSP, power, routed-frequency, latency or repeated-trial values are asserted.
+- Historical learning, design, verification and analysis material is preserved. The completion record supersedes older pending/active phase statements where owner-confirmed completion now applies.
